@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gristmill.kit/v2/schemas/finding.schema.json",
+  "title": "Finding",
+  "description": "One defect surfaced by an analyzer (L0 structural fact), the harness (L1 executed mechanism), or a replayed/executed trace (L2). V1 semantics preserved: fidelity records how it was observed; an L0 finding can never be CONFIRMED.",
+  "type": "object",
+  "required": ["finding_id", "rule", "mode", "severity", "fidelity", "verify_status", "summary", "subject", "fix_candidates"],
+  "properties": {
+    "finding_id": { "type": "string" },
+    "rule": { "type": "string", "description": "Analyzer rule id, e.g. SEC-02." },
+    "mode": { "type": "string", "enum": ["security", "efficiency", "model-drift"] },
+    "severity": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "fidelity": { "type": "string", "enum": ["L0", "L1", "L2", "L3"] },
+    "verify_status": { "type": "string", "enum": ["CONFIRMED", "UNCERTAIN", "REFUTED"] },
+    "summary": { "type": "string" },
+    "subject": { "type": "object", "properties": { "tool": { "type": "string" }, "route": { "type": "string" }, "param": { "type": "string" }, "env": { "type": "string" } } },
+    "evidence": { "type": "object" },
+    "cells": { "type": "array", "items": { "type": "string" }, "description": "Lattice cell keys this finding bears on." },
+    "fix_candidates": { "type": "array", "items": { "type": "string" }, "description": "Fix ids that would close this finding." }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gristmill.kit/v2/schemas/cell.schema.json",
+  "title": "LatticeCell",
+  "description": "One point in the semantic equivalence lattice. The lattice has a known total, so coverage is a fraction, not a count. Each cell carries a deterministic prompt instantiation, a policy-simulator prior, and (after the open-world phase) observed outcomes.",
+  "type": "object",
+  "required": ["cell_id", "coords", "prompt", "ideal", "prior"],
+  "properties": {
+    "cell_id": { "type": "string" },
+    "coords": { "type": "object", "additionalProperties": { "type": "string" } },
+    "prompt": { "type": "string" },
+    "injected_context": { "type": "array", "items": { "type": "object", "required": ["source", "content"] } },
+    "ideal": {
+      "type": "object",
+      "description": "Mechanically derived expectations the oracles score against.",
+      "properties": {
+        "handler": { "type": "string" },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "max_calls": { "type": "integer" },
+        "gate_required": { "type": "boolean" },
+        "must_not_call": { "type": "array", "items": { "type": "string" } },
+        "must_redact": { "type": "boolean" },
+        "must_state_scope": { "type": "boolean" }
+      }
+    },
+    "prior": {
+      "type": "object",
+      "required": ["p_fail", "confidence"],
+      "properties": {
+        "p_fail": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "How mechanism-determined the prediction is (1 = decided by code paths, 0 = pure model judgment)." },
+        "predicted_trace": { "type": "object" },
+        "reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "severity_weight": { "type": "number" },
+    "observations": { "type": "array", "items": { "type": "object" } }
+  }
+}

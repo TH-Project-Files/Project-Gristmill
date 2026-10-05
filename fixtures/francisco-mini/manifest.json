@@ -1,0 +1,17 @@
+{
+  "id": "mini-agent",
+  "name": "Mini Agent",
+  "version": "0.1.0",
+  "model": "sonnet",
+  "capabilities": { "readOnly": false, "networkAccess": true, "shellExecution": true, "requiresApproval": true },
+  "environment": {
+    "required": [
+      { "name": "API_BASE_URL", "sensitive": false },
+      { "name": "API_TOKEN", "sensitive": true }
+    ],
+    "optional": [
+      { "name": "LOG_LEVEL", "sensitive": false }
+    ]
+  },
+  "toolApprovals": { "run_script": "ask" }
+}
