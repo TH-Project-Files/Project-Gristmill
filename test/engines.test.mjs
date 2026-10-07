@@ -85,7 +85,12 @@ test('planner: Neyman allocation respects the budget, orders by score, and the p
   assert.equal(plan.strata.reduce((a, s) => a + s.allocated, 0), 6);
   for (let i = 1; i < plan.runs.length; i++) assert.ok(plan.runs[i - 1].score >= plan.runs[i].score);
   assert.ok(plan.holdout.length >= 1, 'a smoothness holdout is reserved');
-  for (const h of plan.holdout) { assert.ok(!plan.runs.some(r => r.cell_id === h.cell_id), 'holdout cells are not first-pass runs'); assert.ok(h.neighbour_of, 'each holdout is one coordinate away from a selected run'); }
+  for (const h of plan.holdout) {
+    assert.ok(!plan.runs.some(r => r.cell_id === h.cell_id), 'holdout cells are not first-pass runs');
+    const parent = plan.runs.find(r => r.cell_id === h.neighbour_of);
+    assert.ok(parent && Object.keys(h.coords).filter(k => h.coords[k] !== parent.coords[k]).length === 1, 'each holdout is exactly one coordinate from its parent run');
+    assert.ok(typeof h.p_fail === 'number' && h.prompt.length > 10, 'holdout cells are fully instantiated with a prior');
+  }
   const post = updatePrior({ p_fail: 0.2, confidence: 0.4 }, [{ pass: false }, { pass: false }, { pass: false }]);
   assert.ok(post.p_fail > 0.5 && post.observed.n === 3);
   void dims;
