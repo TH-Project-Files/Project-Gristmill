@@ -65,6 +65,17 @@ test('set cover: picks the fix with the largest remaining severity-weighted mass
   assert.ok(!r.fixes.some(f => f.fix_id === 'errors:sanitize@u'), 'refuted findings carry no weight');
 });
 
+test('set cover groups many same-kind fixes into one task while keeping every fix row', () => {
+  const fs = ['a', 'b', 'c', 'd'].map((t, i) => ({ finding_id: `f${i}`, severity: 3, fidelity: 'L0', verify_status: 'UNCERTAIN', rule: 'EFF-06', fix_candidates: [`limit:add@${t}`], cells: ['x'] }));
+  fs.push({ finding_id: 'g', severity: 5, fidelity: 'L1', verify_status: 'CONFIRMED', rule: 'HAR-SECRET', fix_candidates: ['redact:env@z'], cells: ['y'] });
+  const r = rankFixes(fs);
+  assert.equal(r.fixes.length, 5);
+  const grp = r.groups.find(g => g.kind === 'limit:add');
+  assert.ok(grp && grp.members.length === 4 && grp.closes_findings === 4);
+  assert.ok(r.groups.find(g => g.kind === 'redact:env').members.length === 1);
+  assert.equal(r.groups.at(-1).cumulative_efficacy, 1);
+});
+
 test('planner: Neyman allocation respects the budget, orders by score, and the posterior moves toward observations', () => {
   const dims = deriveDimensions(seeded);
   const cells = [];
@@ -73,6 +84,8 @@ test('planner: Neyman allocation respects the budget, orders by score, and the p
   assert.equal(plan.selected_runs, 6);
   assert.equal(plan.strata.reduce((a, s) => a + s.allocated, 0), 6);
   for (let i = 1; i < plan.runs.length; i++) assert.ok(plan.runs[i - 1].score >= plan.runs[i].score);
+  assert.ok(plan.holdout.length >= 1, 'a smoothness holdout is reserved');
+  for (const h of plan.holdout) { assert.ok(!plan.runs.some(r => r.cell_id === h.cell_id), 'holdout cells are not first-pass runs'); assert.ok(h.neighbour_of, 'each holdout is one coordinate away from a selected run'); }
   const post = updatePrior({ p_fail: 0.2, confidence: 0.4 }, [{ pass: false }, { pass: false }, { pass: false }]);
   assert.ok(post.p_fail > 0.5 && post.observed.n === 3);
   void dims;

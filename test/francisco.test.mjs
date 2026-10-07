@@ -10,7 +10,9 @@ const t = id => m.tools.find(x => x.id === id);
 
 test('heuristic extractor recognizes tools, zod params, env vars, subagents and approvals from a Francisco package', () => {
   assert.equal(m.extraction.confidence, 'heuristic');
-  assert.deepEqual(m.tools.map(x => x.id).sort(), ['fetch_page', 'parse_version', 'run_script']);
+  assert.deepEqual(m.tools.map(x => x.id).sort(), ['fetch_page', 'list_hosts', 'parse_version', 'run_script']);
+  assert.equal(t('list_hosts').implicit_cap, true, 'handler-side slice is an implicit cap');
+  assert.equal(t('fetch_page').implicit_cap, false, 'a real limit param is not an implicit cap');
   const url = t('fetch_page').params.find(p => p.name === 'url');
   assert.equal(url.taint, 'url'); assert.equal(url.maxLength, 2048); assert.equal(url.required, true);
   assert.equal(t('fetch_page').params.find(p => p.name === 'max_chars').type, 'integer');
@@ -35,4 +37,6 @@ test('analyzers run on a heuristic model and the obvious structural facts surfac
   assert.ok(F.some(f => f.rule === 'SEC-06' && f.subject.tool === 'run_script'));
   assert.ok(!F.some(f => f.rule === 'SEC-01' && f.subject.tool === 'run_script'), 'run_script is hitl-gated');
   assert.ok(F.some(f => f.rule === 'EFF-01'));
+  const cap = F.find(f => f.rule === 'EFF-06' && f.subject.tool === 'list_hosts');
+  assert.ok(cap && cap.severity === 1 && cap.evidence.implicit_cap, 'implicitly capped list is informational, not severity 3');
 });

@@ -20,6 +20,15 @@ export function createWebTools(env: Record<string, string>) {
       },
     ),
     tool(
+      'list_hosts',
+      'List the allowlisted vendor hosts with their last-fetch status.',
+      {},
+      async () => {
+        const rows = ALLOWED_HOSTS.map((h) => ({ host: h, ok: true }));
+        return { content: [{ type: 'text', text: JSON.stringify(rows.slice(0, 50)) }] };
+      },
+    ),
+    tool(
       'parse_version',
       'Extract a version string from text using a regex.',
       { text: z.string().max(5000) },

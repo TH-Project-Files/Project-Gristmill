@@ -62,6 +62,7 @@
         "env": { "type": "array", "items": { "type": "string" }, "description": "Env var names the tool reads (declared)." },
         "gates": { "type": "array", "items": { "type": "string" }, "description": "Gate ids intrinsically wrapping this tool regardless of caller." },
         "limit_param": { "type": ["string", "null"] },
+        "implicit_cap": { "type": "boolean", "description": "The handler bounds its own result set (slice/top/pageSize…) even though no limit parameter is in the contract. Downgrades EFF-06 to informational." },
         "batch_of": { "type": ["string", "null"], "description": "If this tool is the batch form of another tool, that tool's id." },
         "retries": { "type": ["object", "null"], "properties": { "max": { "type": "integer" }, "backoff": { "type": "boolean" }, "outage_aware": { "type": "boolean" } } },
         "errors": { "type": "string", "enum": ["sanitized", "raw", "unknown"] },

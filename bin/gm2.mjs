@@ -43,8 +43,8 @@ try {
   });
   console.log(`\nwrote ${r.outDir}`);
   console.log(`  model.json graph.json findings.jsonl cells.jsonl plan.json open_world_plan.json summary.md harness/`);
-  const top = r.plan.fixes.slice(0, 5);
-  if (top.length) { console.log('\nTop fixes:'); for (const f of top) console.log(`  ${f.rank}. ${f.fix_id}  (closes ${f.closes_findings.length} findings / ${f.closes_cells} cells, cum ${Math.round(f.cumulative_efficacy * 100)}%)`); }
+  const top = (r.plan.groups || []).slice(0, 6);
+  if (top.length) { console.log(`\nTop tasks (${r.plan.fixes.length} fixes in ${r.plan.groups.length} tasks):`); for (const g of top) console.log(`  ${g.order}. ${g.group_id}  (closes ${g.closes_findings} findings / ${g.closes_cells} cells, cum ${Math.round(g.cumulative_efficacy * 100)}%)`); }
 } catch (e) {
   console.error('gm2 failed:', e.message);
   if (has('debug')) console.error(e.stack);
