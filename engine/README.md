@@ -1,14 +1,19 @@
-# Gristmill V2
+# Gristmill engine
 
-**Closed-world exhaustive dry audits of agent platforms — security and efficiency — with self-built L1 harnesses and a statistically selected open-world plan.**
+**Closed-world exhaustive dry audits of agent platforms — security and efficiency — with self-built L1 harnesses, multi-step model checking, defense-shape measurement, and a statistically selected open-world plan.**
 
-V1 ([Project-Gristmill](https://github.com/TH-Project-Files/Project-Gristmill)) is a methodology: roles, modes, schemas, rubrics, and a closed critic↔planner loop driven by an LLM inside a harness. V2 keeps V1's honesty rules (fidelity ladder, non-repetition, no self-flattery, honest significance) and moves everything that *can* be computed out of the model and into deterministic code. No LLM, no network, no credentials are needed for anything in this repository. Same inputs ⇒ byte-identical artifacts.
+The rest of this repository is the Gristmill *methodology*: roles, modes, schemas, rubrics, and a closed critic↔planner loop driven by an LLM. The engine keeps every honesty rule of that methodology (fidelity ladder, non-repetition, no self-flattery, honest significance) and moves everything that *can* be computed out of the model and into deterministic code. The Master Audit Prompt in the root README runs it as an optional pre-pass when a shell is available.
+
+Requires Node 20+. No dependencies. Everything except `gm2 boundary --live` runs with no LLM, no network, and no credentials, and same inputs give byte-identical artifacts. Run every command from this `engine/` directory.
 
 ```
 node bin/gm2.mjs audit --target fixtures/example-agent/agent.mjs --out workspace/example \
                        --traces fixtures/example-agent/recorded_traces.jsonl
+node bin/gm2.mjs boundary --target fixtures/example-agent/agent.mjs --out workspace/boundary   # mock runner
 node --test test/*.test.mjs
 ```
+
+To audit your own agent, read [docs/EXPORTING_A_TARGET.md](docs/EXPORTING_A_TARGET.md): zero-effort heuristic extraction, a one-file binding that gives real handlers L1 coverage, or an exact model.
 
 ## The idea in one paragraph
 
@@ -103,8 +108,10 @@ export function describeAgent() {
 ```
 Handlers receive `ctx = { env, tenant, fetch, fs, shell, db, log, output }` and must use `ctx.env`, never `process.env` — that is what makes the env lock (and the undeclared-env finding) real. See `schemas/platform-model.schema.json` for every field.
 
-## What V2 does not do (yet)
+## Limits, stated plainly
 
-- It does not call a model. The open-world plan is an input for a V1 campaign controller or any runner you choose.
-- The Francisco extractor cannot execute handlers (that needs the package's own deps under tsx); it is L0 only and says so.
-- Supply-chain audit is not included (advisory data needs a network pull; vendoring a snapshot is the intended path).
+- **Only one command spends tokens.** `gm2 boundary --live` drives a real model (the Anthropic runner) with every tool call landing on recording fakes; it refuses to start without `GRISTMILL_SANDBOX=1`. Everything else is offline. The open-world plan is also a plain input for the methodology's LLM campaign controller or any runner you choose.
+- **Bisection assumes failure rises with pressure.** A defense that fails at mid pressure but recovers at the extreme would be mislocated; repeats at the flip level are the partial mitigation.
+- **Heuristic extraction is L0 only.** Pointing `--target` at a package directory reads it by regex. To execute its real handlers, bind them with the shim ([docs/EXPORTING_A_TARGET.md](docs/EXPORTING_A_TARGET.md)); network that bypasses global `fetch` is not intercepted by that shim.
+- **The lattice is the map.** Exhaustive means exhaustive over the dimensions modelled. A channel the model omits is invisible; harness drift findings and surprising real traces are the signal to add a dimension.
+- **No supply-chain audit.** Advisory data needs a network pull; vendoring a snapshot is the intended path.

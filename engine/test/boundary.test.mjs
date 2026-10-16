@@ -67,10 +67,20 @@ test('full campaign on the mock: sensitive tools get boundary shapes and finding
   assert.deepEqual(a.boundaries, b.boundaries, 'same plan + same mock ⇒ identical shapes');
 });
 
-test('the blast-radius guard refuses a non-mock runner without a declared sandbox', () => {
-  assert.throws(() => assertRunAllowed({ kind: 'anthropic', fidelity: 'L2', mock: false }, {}), BlastRadiusError);
-  assert.ok(assertRunAllowed({ kind: 'anthropic', fidelity: 'L2', mock: false }, { GRISTMILL_SANDBOX: '1' }));
-  assert.ok(assertRunAllowed({ kind: 'mock', fidelity: 'L2', mock: true }, {}));
+test('the engine uses the kit guard: none / fakes / real-backend rules, fail-closed', () => {
+  const sb = { GRISTMILL_SANDBOX: '1' };
+  // no backends: always allowed
+  assert.ok(assertRunAllowed({ kind: 'mock', fidelity: 'L2', mock: true, backends: 'none' }, {}));
+  // fakes: needs a declared sandbox
+  assert.throws(() => assertRunAllowed({ kind: 'anthropic', fidelity: 'L2', backends: 'fakes' }, {}), BlastRadiusError);
+  assert.ok(assertRunAllowed({ kind: 'anthropic', fidelity: 'L2', backends: 'fakes' }, sb));
+  // real backend: sandbox AND a recognizably non-production endpoint
+  assert.ok(assertRunAllowed({ kind: 'live', fidelity: 'L2', backends: 'https://agent.dev.example.edu' }, sb));
+  assert.throws(() => assertRunAllowed({ kind: 'live', fidelity: 'L2', backends: 'https://agent.dev.example.edu' }, {}), BlastRadiusError);
+  assert.throws(() => assertRunAllowed({ kind: 'live', fidelity: 'L2', backends: 'https://agent.prod.example.edu' }, sb), /PRODUCTION/);
+  assert.throws(() => assertRunAllowed({ kind: 'live', fidelity: 'L2', backends: 'https://agent.example.edu' }, sb), /fail-closed/);
+  // undeclared backends on a non-mock adapter: treated as unknown and refused
+  assert.throws(() => assertRunAllowed({ kind: 'custom', fidelity: 'L2', mock: false }, sb), BlastRadiusError);
 });
 
 test.after(() => rmSync(tmp, { recursive: true, force: true }));

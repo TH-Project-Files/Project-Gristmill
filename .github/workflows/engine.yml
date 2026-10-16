@@ -1,0 +1,42 @@
+name: engine
+
+# Runs the engine's test suite and a determinism check on every push and pull request that touches
+# the engine or the shared safety guard it imports. No secrets, no network beyond checkout.
+
+on:
+  push:
+    paths: ['engine/**', 'safety/**', '.github/workflows/engine.yml']
+  pull_request:
+    paths: ['engine/**', 'safety/**', '.github/workflows/engine.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Test suite
+        run: node --test test/*.test.mjs
+      - name: Determinism (two audits must be byte-identical)
+        run: |
+          set -euo pipefail
+          for d in a b; do
+            node bin/gm2.mjs audit --target fixtures/example-agent/agent.mjs --out "workspace/det-$d" \
+              --traces fixtures/example-agent/recorded_traces.jsonl --quiet
+          done
+          for f in findings.jsonl plan.json open_world_plan.json sequence_findings.jsonl summary.md; do
+            cmp "workspace/det-a/$f" "workspace/det-b/$f"
+          done
+      - name: Boundary engine on the mock runner
+        run: node bin/gm2.mjs boundary --target fixtures/example-agent/agent.mjs --out workspace/boundary --quiet

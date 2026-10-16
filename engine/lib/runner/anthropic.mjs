@@ -91,7 +91,7 @@ export function createAnthropicRunner(model, { apiKey = process.env.ANTHROPIC_AP
   }
 
   return {
-    kind: 'anthropic', fidelity: 'L2', mock: false,
+    kind: 'anthropic', fidelity: 'L2', mock: false, backends: 'fakes',   // every tool call goes through makeCtx recording fakes
     describe() { return { model_version: modelId }; },
     async run(cell) {
       const orchestrator = model.actors.find(a => a.kind === 'orchestrator');

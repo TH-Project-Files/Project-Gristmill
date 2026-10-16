@@ -43,7 +43,7 @@ export function makeCtx(model, tool, { tenant = 'TENANT-1' } = {}) {
   const sink = (kind, detail) => rec.sinks.push({ kind, detail });
   const ctx = {
     env, tenant,
-    fetch: async (url, init = {}) => { rec.fetches.push({ url: String(url), method: init.method || 'GET' }); sink(init.method && init.method !== 'GET' ? 'external-write' : 'network', String(url)); return { ok: true, status: 200, body: 'mock-body', json: async () => ({}) }; },
+    fetch: async (url, init = {}) => { rec.fetches.push({ url: String(url), method: init.method || 'GET' }); sink(init.method && init.method !== 'GET' ? 'external-write' : 'network', String(url)); return { ok: true, status: 200, body: '{}', json: async () => ({}), text: async () => '{}' }; },
     fs: { write: (p, data) => { rec.fs.push({ op: 'write', path: String(p) }); sink('fs', String(p)); }, read: (p) => { rec.fs.push({ op: 'read', path: String(p) }); sink('fs', String(p)); return ''; } },
     shell: { exec: (cmd) => { rec.shell.push(String(cmd)); sink('shell', String(cmd)); return { stdout: '', code: 0 }; } },
     db: { query: (sql, params = []) => { rec.db.push({ sql: String(sql), params }); sink('db', String(sql)); return null; } },

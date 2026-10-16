@@ -39,7 +39,7 @@ export function createMockRunner(model, plan = {}, { seed = 1 } = {}) {
   const applicable = (effect, tool) => P.boundaries.filter(b => b.effect === effect && (!b.tool || b.tool === tool));
 
   return {
-    kind: 'mock', fidelity: 'L2', mock: true,
+    kind: 'mock', fidelity: 'L2', mock: true, backends: 'none',
     describe() { return { model_version: 'mock-agent-1', plan: P }; },
     async run(cell, { rep = 0 } = {}) {
       const c = cell.coords;

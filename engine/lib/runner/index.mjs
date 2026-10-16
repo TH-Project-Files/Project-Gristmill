@@ -3,24 +3,35 @@
  *
  *   adapter = { kind, fidelity: 'L2', mock: boolean, run(cell, { rep }) -> Promise<Trace>, describe() }
  *
- * runCell() wraps an adapter: it applies V1's blast-radius discipline (a non-mock L2 runner refuses
- * to run unless a sandbox is declared), executes, scores the trace with the mechanical oracles and
- * returns an OBSERVATION — the record the boundary engine consumes. The adapter never scores itself.
+ * runCell() wraps an adapter: it applies the kit's ONE blast-radius guard (../../../safety), executes,
+ * scores the trace with the mechanical oracles and returns an OBSERVATION — the record the boundary
+ * engine consumes. The adapter never scores itself.
+ *
+ * Every adapter declares where its TOOL CALLS land:
+ *   backends: 'none'  — mock runner, no model, no tools        → always allowed
+ *   backends: 'fakes' — real model, tools hit recording fakes  → sandbox must be declared
+ *   backends: <url>   — real model, tools hit a real backend   → sandbox declared AND the endpoint
+ *                       must be recognizably non-production (fail-closed on unknown), exactly the
+ *                       rule V1's safe-execute enforces for L2/L3 runs.
+ * An adapter that declares nothing is treated as hitting an unknown backend and refused.
  */
 import { scoreTrace, canaries } from '../oracles/index.mjs';
 import { toolById } from '../model.mjs';
+import { assertSandboxActive, isSandboxActive, BlastRadiusError } from '../../../safety/blast-radius-guard.mjs';
 
-export class BlastRadiusError extends Error { constructor(m) { super(m); this.name = 'BlastRadiusError'; } }
+export { BlastRadiusError };
 
-export function sandboxDeclared(env = process.env, opts = {}) {
-  const flag = String(env.GRISTMILL_SANDBOX ?? '').trim().toLowerCase();
-  return ['1', 'true', 'on', 'yes', 'active'].includes(flag) || opts.sandbox?.active === true;
-}
+export function sandboxDeclared(env = process.env, opts = {}) { return isSandboxActive({ sandbox: opts.sandbox }, env); }
 
 export function assertRunAllowed(adapter, env = process.env, opts = {}) {
-  if (adapter.mock) return true;
-  if (!sandboxDeclared(env, opts)) throw new BlastRadiusError(`Refusing ${adapter.kind} (${adapter.fidelity}) run: no sandbox declared. Set GRISTMILL_SANDBOX=1 only when the runner's tool backends are fakes or a throwaway tenant.`);
-  return true;
+  const backends = adapter.backends ?? (adapter.mock ? 'none' : undefined);
+  if (backends === 'none') return true;
+  if (backends === 'fakes') {
+    if (!sandboxDeclared(env, opts)) throw new BlastRadiusError(`Refusing ${adapter.kind} (${adapter.fidelity}) run: no sandbox declared. Its tools hit recording fakes, but it spends real credentials; set GRISTMILL_SANDBOX=1 to confirm.`);
+    return true;
+  }
+  // Real backend (or undeclared ⇒ unknown): the full V1 rule, fail-closed.
+  return assertSandboxActive({ fidelity: adapter.fidelity === 'L3' ? 'L3' : 'L2', targetEndpoint: backends, sandbox: opts.sandbox }, env);
 }
 
 export async function runCell(adapter, model, cell, { rep = 0, env = process.env, opts = {} } = {}) {
