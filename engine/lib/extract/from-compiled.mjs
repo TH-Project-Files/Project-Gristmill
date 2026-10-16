@@ -14,6 +14,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { withSandbox } from '../synth/shim.mjs';
 
 const WRITE = new Set(['delete', 'remove', 'reset', 'wipe', 'create', 'update', 'set', 'push', 'send', 'initiate', 'trigger', 'disable', 'enable', 'revoke', 'assign', 'unassign', 'add', 'kill', 'quarantine', 'isolate', 'reboot', 'restart', 'install', 'uninstall', 'redline', 'write', 'post', 'patch', 'put']);
 const READ = new Set(['get', 'list', 'find', 'search', 'read', 'fetch', 'lookup', 'query', 'describe', 'export', 'check', 'analyze', 'analyse', 'summary', 'summarize', 'diagnose', 'trace', 'triage', 'report', 'whoami', 'capability']);
@@ -25,7 +26,10 @@ export async function extractCompiled(root, { entry } = {}) {
   const entryPath = entry ? resolve(dir, entry) : resolveEntry(dir, manifest);
   if (!entryPath) throw new Error(`no compiled entry found under ${dir} (looked at manifest.main, dist/index.js, package.json main)`);
 
-  const mod = await import(pathToFileURL(entryPath).href);
+  // Importing runs the package's top-level code: do it inside the sandbox (network refused and
+  // recorded, host env hidden) so loading a package can never call out or read a real secret.
+  const blocked = [];
+  const mod = await withSandbox(() => import(pathToFileURL(entryPath).href), { blocked });
   const createTools = mod.createTools || mod.default?.createTools || mod.default;
   if (typeof createTools !== 'function') throw new Error(`${entryPath} does not export createTools()`);
 
@@ -34,10 +38,13 @@ export async function extractCompiled(root, { entry } = {}) {
   for (const g of manifest.environment?.groups || []) for (const v of g.variables || g.vars || []) env.push({ name: v.name || v.key, sensitive: !!v.sensitive });
   for (const list of ['variables', 'required', 'optional']) for (const v of manifest.environment?.[list] || []) if (v && (v.name || v.key)) env.push({ name: v.name || v.key, sensitive: !!v.sensitive });
   const envRead = new Set();
-  const probeEnv = new Proxy({}, { get(_, k) { if (typeof k === 'string') { envRead.add(k); return `probe-${k}`; } return undefined; }, has: () => true });
+  // Only env-var-shaped keys are real reads; JS machinery (toJSON, then, constructor…) is not.
+  const ENV_NAME = /^[A-Z][A-Z0-9_]{2,}$/;
+  const probeEnv = new Proxy({}, { get(_, k) { if (typeof k === 'string' && ENV_NAME.test(k)) { envRead.add(k); return `probe-${k}`; } return undefined; }, has: (_, k) => typeof k === 'string' && ENV_NAME.test(k) });
 
   let defs;
-  try { defs = createTools(probeEnv); } catch (e) { notes.push(`createTools() threw during load (${String(e.message || e).split('\n')[0].slice(0, 120)}); stub its dependencies in a describe.mjs to list tools`); defs = []; }
+  try { defs = await withSandbox(async () => createTools(probeEnv), { blocked }); } catch (e) { notes.push(`createTools() threw during load (${String(e.message || e).split('\n')[0].slice(0, 120)}); stub its dependencies in a describe.mjs to list tools`); defs = []; }
+  if (blocked.length) notes.push(`the package attempted ${blocked.length} network call(s) during import/createTools(); all refused by the sandbox (${[...new Set(blocked)].slice(0, 3).join(', ')})`);
   if (!Array.isArray(defs)) { notes.push('createTools() did not return an array'); defs = []; }
   for (const n of envRead) if (!env.some(e => e.name === n)) env.push({ name: n, sensitive: /KEY|SECRET|TOKEN|PASS|PWD|CRED/i.test(n) });
 

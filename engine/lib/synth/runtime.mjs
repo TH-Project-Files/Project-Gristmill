@@ -10,6 +10,7 @@
  * useful thing a dry audit can tell you, because every L0 conclusion rests on the model being true.
  */
 import { canaryFor } from '../oracles/index.mjs';
+import { withSandbox } from './shim.mjs';
 import { sensitiveEnvNames } from '../model.mjs';
 import { hashHex } from '../util.mjs';
 
@@ -99,7 +100,7 @@ export async function probeTool(model, tool, handler, { timeoutMs = 2000, tenant
     const run = async () => {
       const { ctx, rec, canaries } = makeCtx(model, tool, { tenant });
       let threw = null, result = null;
-      try { result = await withTimeout(handler(cs.args, ctx), timeoutMs); } catch (e) { threw = e; }
+      try { result = await withTimeout(withSandbox(() => handler(cs.args, ctx), { ctxFetch: ctx.fetch }), timeoutMs); } catch (e) { threw = e; }
       return { rec, canaries, threw, result };
     };
     const a = await run(), b = await run();
@@ -140,7 +141,7 @@ export async function probeTool(model, tool, handler, { timeoutMs = 2000, tenant
     }
     if (tool.limit_param && cs.kind === 'valid') {
       const { ctx, rec: r2 } = makeCtx(model, tool, { tenant });
-      try { await withTimeout(handler({ ...cs.args, [tool.limit_param]: 5 }, ctx), timeoutMs); } catch { /* ignore */ }
+      try { await withTimeout(withSandbox(() => handler({ ...cs.args, [tool.limit_param]: 5 }, ctx), { ctxFetch: ctx.fetch }), timeoutMs); } catch { /* ignore */ }
       const rows = tryJsonArray(r2.outputs.join('\n'));
       if (rows && rows.length > 5) add('LIMIT-NOT-ENFORCED', false, `limit=5 returned ${rows.length} rows`, 3, 'HAR-LIMIT', `limit:add@${tool.id}`);
     }

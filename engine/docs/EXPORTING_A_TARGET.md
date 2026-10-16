@@ -7,17 +7,28 @@ increasing order of what they unlock.
 | Path | Effort | Fidelity reached | Command |
 |---|---|---|---|
 | **A. Heuristic** — a package with readable `src/**/*.ts` | none | L0 (structure, sequences) | `gm2 audit --target ~/my-agent --out ws/my-agent` |
-| **A′. Compiled** — a package that ships only `dist/index.js` | none | **L1** (tools listed and handlers executed at runtime) | same command; auto-detected |
+| **A′. Compiled** — a package that ships only `dist/index.js` | one flag | **L1** (tools listed and handlers executed at runtime) | same command + `--kind compiled` |
 | **B. Bound** — a `describe.mjs` that fixes the model and/or stubs deps before binding | one small file | **L1**, corrected model | `gm2 audit --target describe.mjs --out ws/my-agent` |
 | **C. Exact** — hand-written `describeAgent()` | an afternoon | L1, exact model, `high-confidence` eligible | same as B |
 
 Any of these can then feed `gm2 boundary --live` for L2 measurement.
 
-**Which one runs?** On a directory, the engine reads `src/**/*.ts` if present (A); otherwise, if a
-built entry exists (`manifest.main`, `dist/index.js`, package `main`), it imports the package and
-lists tools from `createTools()` at runtime and binds the handlers (A′). Force either with
-`--kind francisco` or `--kind compiled`. Use B when `createTools()` throws on load because it reaches
-for a database, a registry or a client — stub those, then bind.
+**Which one runs?** On a directory the engine only ever *reads* by default (A). Reading is safe;
+running a package is not, so A′ is opt-in: pass `--kind compiled` (or `--allow-exec`) and the
+engine imports the built entry (`manifest.main`, `dist/index.js`, package `main`), lists tools from
+`createTools()` at runtime, binds the handlers, and learns from execution which sinks and env vars
+each tool really touches. If you point at a src-less directory without the flag, the report says so
+and tells you to add it.
+
+While the package runs — at import, inside `createTools()`, and in every handler — it is sandboxed:
+global `fetch` is refused (during load) or routed to the recording fakes (in handlers), and
+`process.env` is swapped for a scrubbed copy, so code that reads the host environment directly sees
+no API key or cloud credential. Refused network attempts are listed in the extraction notes. Network
+that bypasses global `fetch` is still not intercepted; the hidden environment is what stops such a
+call from authenticating.
+
+Use B when `createTools()` throws on load because it reaches for a database, a registry or a
+client — stub those, then bind.
 
 ## A. Heuristic (zero effort)
 

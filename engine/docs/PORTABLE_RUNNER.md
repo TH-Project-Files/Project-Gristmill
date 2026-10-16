@@ -47,21 +47,21 @@ Return `tool_uses: []` (or omit it) when the model is done. Ids are optional; th
 
 ### Examples
 
-**Bedrock**, using the AWS CLI's signing (credentials already in your env):
+**Bedrock**, using the shipped bridge and the AWS CLI's signing:
 ```bash
---complete-cmd 'python3 tools/bedrock_complete.py'   # reads stdin request, calls bedrock-runtime:InvokeModel, prints {text,tool_uses}
+BEDROCK_MODEL_ID=<your Claude model or inference-profile id> \
+  GRISTMILL_SANDBOX=1 node bin/gm2.mjs boundary --target <t> --out <o> --live --complete-cmd 'node bridges/bedrock.mjs'
 ```
-A ~30-line script: read the JSON, pass `system`/`messages`/`tools` straight through to the Bedrock
-Anthropic Messages body (the shapes match), POST via `boto3` or a signed `aws` call, map the
-response's `content` blocks to `text` + `tool_uses`.
+The shipped bridge (`bridges/bedrock.mjs`) passes the request through as an Anthropic-on-Bedrock body and lets the AWS CLI sign it with whatever credentials your shell already has (profile, SSO, env, instance role). It needs the AWS CLI on PATH and no other dependency.
 
 **A gateway already in the environment** needs no command — set `ANTHROPIC_BASE_URL` and
 `ANTHROPIC_AUTH_TOKEN` and the built-in anthropic transport uses it.
 
-**A fully in-harness fulfiller.** If you are an agent orchestrating this engine and you have model
-access but no key, point `--complete-cmd` at a tiny script that appends each request to a file and
-blocks on a reply file, and fulfill the requests yourself. This is the slow but truly universal
-path; prefer a gateway or key when you have one.
+**A coding-agent subscription alone (Claude Code, Codex) is not yet supported.** Those CLIs run
+their own agent loop with their own tools; they do not hand back a raw single-turn completion with
+tool calls for *the target's* tools, which is what gate enforcement needs. No bridge ships for
+them. If your harness runs on Bedrock, Vertex, a gateway, or an API key underneath, use that layer
+directly (rows above). Otherwise use the mock runner, which needs no model.
 
 ## Why not just call the model myself from the engine?
 

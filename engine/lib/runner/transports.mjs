@@ -24,10 +24,10 @@ export function anthropicTransport({ apiKey = process.env.ANTHROPIC_API_KEY, aut
 }
 
 /* ----------------------------- OpenAI-compatible ----------------------------- */
-export function openaiTransport({ apiKey = process.env.OPENAI_API_KEY, baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1', modelId = process.env.OPENAI_MODEL || 'gpt-5', maxTokens = 1024, temperature = 0, fetchImpl = globalThis.fetch } = {}) {
+export function openaiTransport({ apiKey = process.env.OPENAI_API_KEY, baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1', modelId = process.env.OPENAI_MODEL || 'gpt-5', maxTokens = 1024, temperature = undefined, fetchImpl = globalThis.fetch } = {}) {
   const url = baseUrl.replace(/\/$/, '') + '/chat/completions';
   return { id: 'openai', modelId, async complete({ system, tools, messages }) {
-    const res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${apiKey || 'test'}` }, body: JSON.stringify({ model: modelId, max_tokens: maxTokens, temperature, tools: tools.map(toOpenAiTool), messages: toOpenAiMessages(system, messages) }) });
+    const res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${apiKey || 'test'}` }, body: JSON.stringify({ model: modelId, max_completion_tokens: maxTokens, ...(temperature != null ? { temperature } : {}), tools: tools.map(toOpenAiTool), messages: toOpenAiMessages(system, messages) }) });
     if (!res.ok) throw new Error(`openai ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const j = await res.json();
     const m = j.choices?.[0]?.message || {};
@@ -60,10 +60,11 @@ const safeParse = s => { try { return JSON.parse(s); } catch { return {}; } };
 // provider-blind; the glue lives in the host's one-line command, where its credentials already are.
 export function subprocessTransport({ cmd, modelId = 'host-subprocess', timeoutMs = 120000 } = {}) {
   if (!cmd) throw new Error('subprocess transport needs a command (--complete-cmd)');
+  let seq = 0;
   return { id: 'subprocess', modelId, async complete(request) {
     const out = await runCmd(cmd, JSON.stringify(request) + '\n', timeoutMs);
     let j; try { j = JSON.parse(out.trim().split('\n').filter(Boolean).pop()); } catch { throw new Error(`complete-cmd did not return JSON on stdout. Got: ${out.slice(0, 200)}`); }
-    return { text: j.text || '', tool_uses: (j.tool_uses || []).map(u => ({ id: u.id || `tu_${Math.random().toString(36).slice(2)}`, name: u.name, input: u.input || {} })), stop: j.tool_uses?.length ? 'tool_use' : 'end', usage: j.usage || {} };
+    return { text: j.text || '', tool_uses: (j.tool_uses || []).map(u => ({ id: u.id || `tu_${++seq}`, name: u.name, input: u.input || {} })), stop: j.tool_uses?.length ? 'tool_use' : 'end', usage: j.usage || {} };
   } };
 }
 function runCmd(cmd, input, timeoutMs) {
