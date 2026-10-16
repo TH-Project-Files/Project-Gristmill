@@ -28,7 +28,7 @@ if (cmd === 'boundary') {
   const { runBoundaryCampaign } = await import('../lib/boundary/index.mjs');
   const { runSequenceEngine } = await import('../lib/sequence/index.mjs');
   const { resolve } = await import('node:path');
-  const { model } = await loadModel(target, opt('kind'));
+  const { model } = await loadModel(target, opt('kind'), { allowExec: has('allow-exec') });
   let adapter;
   if (has('live')) {
     const { createLiveRunner } = await import('../lib/runner/live.mjs');
@@ -67,7 +67,7 @@ if (!target || !out) { console.error('--target and --out are required'); process
 try {
   const r = await runPipeline({
     target, out, kind: opt('kind'), strength: +opt('strength', 2), budget: +opt('budget', 40), traces: opt('traces'), now: opt('now'),
-    fullIfAtMost: +opt('full-if-at-most', 2000), depth: +opt('depth', 5), boundaryFindings: opt('boundary-findings'), stages: STAGES[cmd], log: has('quiet') ? () => {} : (s) => console.log('  ' + s),
+    fullIfAtMost: +opt('full-if-at-most', 2000), depth: +opt('depth', 5), boundaryFindings: opt('boundary-findings'), allowExec: has('allow-exec'), stages: STAGES[cmd], log: has('quiet') ? () => {} : (s) => console.log('  ' + s),
   });
   console.log(`\nwrote ${r.outDir}`);
   console.log(`  model.json graph.json findings.jsonl cells.jsonl plan.json open_world_plan.json summary.md harness/`);

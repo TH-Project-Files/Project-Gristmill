@@ -26,16 +26,48 @@ import { stableStringify, DEFAULT_NOW } from './util.mjs';
 
 const LIB = dirname(fileURLToPath(import.meta.url));
 
-export async function loadModel(target, kind) {
+export async function loadModel(target, kind, { allowExec = false } = {}) {
   const p = resolve(target);
   const isDir = existsSync(p) && statSync(p).isDirectory();
-  // A directory with a built entry but little/no readable src is a COMPILED package: list its tools
-  // at runtime rather than regex over source that isn't there. Explicit --kind always wins.
-  const k = kind || (isDir ? (hasReadableSrc(p) ? 'francisco' : hasCompiledEntry(p) ? 'compiled' : 'francisco') : 'module');
+  // Reading source is always safe; EXECUTING a package is not, so a compiled package is only imported
+  // when the operator asks (--kind compiled, or --allow-exec). Without that, a src-less directory gets
+  // the regex path plus a note saying exactly how to opt in. Explicit --kind always wins.
+  const compiledHere = isDir && !hasReadableSrc(p) && hasCompiledEntry(p);
+  const k = kind || (isDir ? (compiledHere && allowExec ? 'compiled' : 'francisco') : 'module');
   let raw;
-  if (k === 'compiled') { const { extractCompiled } = await import('./extract/from-compiled.mjs'); raw = await extractCompiled(p); if (raw._createTools) { const { bindAll } = await import('./synth/shim.mjs'); bindAll(raw, raw._createTools); } }
-  else raw = k === 'francisco' ? extractFrancisco(p) : await loadTargetModule(p);
-  return { model: normalizeModel(raw), kind: k, path: p };
+  if (k === 'compiled') {
+    const { extractCompiled } = await import('./extract/from-compiled.mjs');
+    raw = await extractCompiled(p);
+    if (raw._createTools) { const { bindAll } = await import('./synth/shim.mjs'); await bindAll(raw, raw._createTools); }
+  } else {
+    raw = k === 'francisco' ? extractFrancisco(p) : await loadTargetModule(p);
+    if (k === 'francisco' && compiledHere) raw.extraction.notes = [...(raw.extraction.notes || []), 'this directory ships a compiled entry and no readable src, so the regex path sees little or nothing. Re-run with --kind compiled (or --allow-exec) to import the package and list its tools at runtime; it executes the package inside the sandbox (network refused, host env hidden).'];
+  }
+  const model = normalizeModel(raw);
+  if (model.extraction.method === 'compiled-runtime') await learnFromExecution(model);
+  return { model, kind: k, path: p };
+}
+
+/**
+ * A compiled package has no declared contract — the runtime IS the source of truth. So observed
+ * sinks and env reads are learned into the model (before any analyzer runs) rather than reported as
+ * "drift": drift means a contract lied, and here there was no contract to lie.
+ */
+async function learnFromExecution(model) {
+  const { probeTool } = await import('./synth/runtime.mjs');
+  let sinks = 0, envs = 0;
+  for (const t of model.tools) {
+    const h = model._handlers[t.id]; if (!h) continue;
+    const r = await probeTool(model, t, h);
+    for (const o of r.observations) {
+      const s = o.check === 'SINK-UNDECLARED' && (o.detail.match(/sink '([\w-]+)'/) || [])[1];
+      if (s && !t.sinks.some(x => x.kind === s)) { t.sinks.push({ kind: s, params: t.params.filter(pp => ({ network: 'url', fs: 'path', db: 'sql', shell: 'shell', 'external-write': 'id' })[s] === pp.taint).map(pp => pp.name), sanitized_by: null }); sinks++; }
+      const v = o.check === 'ENV-UNDECLARED' && (o.detail.match(/env '(\w+)'/) || [])[1];
+      if (v && !t.env.includes(v)) { t.env.push(v); envs++; if (!model.env.some(e => e.name === v)) model.env.push({ name: v, sensitive: /KEY|SECRET|TOKEN|PASS|PWD|CRED/i.test(v) }); }
+    }
+    if (t.sinks.some(x => x.kind === 'external-write' || x.kind === 'shell') && t.kind !== 'external-action') t.kind = 'external-action';
+  }
+  model.extraction.notes.push(`learned from execution: ${sinks} sink(s) and ${envs} env read(s) the static listing could not see; the model now reflects what the handlers actually did`);
 }
 
 function hasReadableSrc(dir) {
@@ -58,7 +90,7 @@ export async function runPipeline(opts) {
   const art = (name, data) => { writeFileSync(join(outDir, name), typeof data === 'string' ? data : stableStringify(data) + '\n'); };
 
   // 1. Extract
-  const { model, kind: k, path } = await loadModel(target, kind);
+  const { model, kind: k, path } = await loadModel(target, kind, { allowExec: opts.allowExec });
   log(`extract: ${model.target.name}@${model.target.version} via ${k} (${model.extraction.confidence}) — ${model.tools.length} tools, ${model.actors.length} actors, ${enumerateRoutes(model).length} routes`);
   const publicModel = { ...model }; delete publicModel._handlers;
   art('model.json', publicModel);

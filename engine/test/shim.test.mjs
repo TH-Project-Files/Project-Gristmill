@@ -37,7 +37,7 @@ test('withFetch routes global fetch through the recording fake and always restor
 });
 
 test('bindAll gives a package-shaped tool real L1 coverage: recorded network, canary env, secret leak caught', async () => {
-  const model = normalizeModel(bindAll(structuredClone(raw), createTools));
+  const model = normalizeModel(await bindAll(structuredClone(raw), createTools));
   assert.ok(model._handlers.get_status, 'handler bound');
   const r = await probeTool(model, model.tools[0], model._handlers.get_status);
   const fails = new Set(r.observations.filter(o => !o.ok).map(o => o.check));

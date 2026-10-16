@@ -18,6 +18,7 @@
  */
 import { consentOnRoute, enumerateRoutes, actorById, toolById } from '../model.mjs';
 import { makeCtx } from '../synth/runtime.mjs';
+import { withSandbox } from '../synth/shim.mjs';
 
 export function createModelRunner(model, { complete, modelId = 'host-model', maxTurns = null, nonInteractiveGate = 'block', kind = 'model', transport = 'custom' } = {}) {
   if (typeof complete !== 'function') throw new Error('createModelRunner needs a complete({system,tools,messages}) function');
@@ -73,7 +74,7 @@ export function createModelRunner(model, { complete, modelId = 'host-model', max
         else {
           const handler = model._handlers[tool.id];
           if (!handler) out = `(no executable handler for ${tool.id}; mocked result)`;
-          else { const { ctx, rec: hrec } = makeCtx(model, tool); try { out = String(await handler(u.input || {}, ctx)); } catch (e) { out = `error: ${String(e.message || e).split('\n')[0]}`; } rec.logs.push(...hrec.logs); rec.outputs.push(...hrec.outputs); }
+          else { const { ctx, rec: hrec } = makeCtx(model, tool); try { out = String(await withSandbox(() => handler(u.input || {}, ctx), { ctxFetch: ctx.fetch })); } catch (e) { out = `error: ${String(e.message || e).split('\n')[0]}`; } rec.logs.push(...hrec.logs); rec.outputs.push(...hrec.outputs); }
         }
         results.push({ type: 'tool_result', tool_use_id: u.id, content: String(out).slice(0, 6000) });
       }

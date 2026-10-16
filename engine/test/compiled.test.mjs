@@ -9,13 +9,13 @@ import { loadModel } from '../lib/pipeline.mjs';
 import { runAnalyzers } from '../lib/analyzers/index.mjs';
 import { probeTool, observationsToFindings } from '../lib/synth/runtime.mjs';
 
-const { model, kind } = await loadModel('fixtures/compiled-agent');
+const { model, kind } = await loadModel('fixtures/compiled-agent', null, { allowExec: true });
 
-test('auto-detects a compiled package and lists its real tools with correct kinds', () => {
+test('with --allow-exec, a compiled package lists its real tools with kinds learned from execution', () => {
   assert.equal(kind, 'compiled');
   assert.equal(model.extraction.method, 'compiled-runtime');
   assert.deepEqual(model.tools.map(t => t.id).sort(), ['fetch_doc', 'get_widget', 'reset_widget', 'show_config']);
-  assert.equal(model.tools.find(t => t.id === 'reset_widget').kind, 'write');
+  assert.equal(model.tools.find(t => t.id === 'reset_widget').kind, 'external-action', 'it POSTs, so execution reclassifies it');
   assert.ok(model.tools.find(t => t.id === 'fetch_doc').params.some(p => p.name === 'url' && p.taint === 'url'));
 });
 
