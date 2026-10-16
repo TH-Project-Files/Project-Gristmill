@@ -23,26 +23,35 @@ export function buildCoveringArray(dims, { strength = 2, fullIfAtMost = 2000, is
   }
   const rows = [];
   const rnd = mulberry32(seed);
-  const coverKeys = (row) => combos.map((combo, ci) => ci + ':' + combo.map(i => row[dims[i].name]).join('\u0001'));
+  const keyOf = (ci, row) => ci + ':' + combos[ci].map(i => row[dims[i].name]).join('\u0001');
+  const coverKeys = (row) => combos.map((_, ci) => keyOf(ci, row));
+  // Which t-combos touch each dimension: when filling dimension d, only those can gain coverage.
+  const combosByDim = dims.map((_, di) => combos.map((c, ci) => (c.includes(di) ? ci : -1)).filter(ci => ci >= 0));
   let stall = 0;
   while (uncovered.size && stall < 50) {
     let best = null, bestGain = -1;
+    const pool = [...uncovered];   // one snapshot per row, not one per candidate
     for (let c = 0; c < candidates; c++) {
       const row = {};
       // Seed from an uncovered interaction so progress is guaranteed when one is satisfiable.
-      const pick = [...uncovered][Math.floor(rnd() * uncovered.size)];
+      const pick = pool[Math.floor(rnd() * pool.length)];
       const [ci, tup] = pick.split(':'); const vals = tup.split('\u0001');
       combos[+ci].forEach((di, k) => { row[dims[di].name] = vals[k]; });
-      // Fill remaining dims greedily by marginal gain, random tie-break.
+      // Fill remaining dims greedily by marginal gain, random tie-break. Marginal gain of a value
+      // counts only the combos through this dimension whose other members are already assigned —
+      // the same number the full rescoring produced, at a fraction of the cost.
       const order = dims.map((_, i) => i).filter(i => !(dims[i].name in row)).sort((a, b) => hashStr(a + '|' + c + '|' + rows.length) - hashStr(b + '|' + c + '|' + rows.length));
       for (const di of order) {
+        const name = dims[di].name;
+        const ready = combosByDim[di].filter(cj => combos[cj].every(j => j === di || dims[j].name in row));
         let bv = null, bg = -1;
         for (const v of dims[di].values) {
-          const trial = { ...row, [dims[di].name]: v };
-          const g = coverKeys(fillUnknown(trial, dims)).filter(k => uncovered.has(k)).length + rnd() * 0.01;
+          row[name] = v;
+          let g = rnd() * 0.01;
+          for (const cj of ready) if (uncovered.has(keyOf(cj, row))) g++;
           if (g > bg) { bg = g; bv = v; }
         }
-        row[dims[di].name] = bv;
+        row[name] = bv;
       }
       // Local repair: a greedy fill can violate a constraint; re-choose single dims (never the seeded
       // interaction) until the row is valid, so a realizable interaction is not thrown away.
@@ -101,7 +110,6 @@ function constructValid(dims, partial, isValid) {
   return null;
 }
 
-function fillUnknown(row, dims) { const r = { ...row }; for (const d of dims) if (!(d.name in r)) r[d.name] = '\u0000'; return r; }
 
 /** Verify that every t-way interaction present in the valid product is covered. Used by the tests. */
 export function verifyCoverage(dims, rows, strength, isValid = () => true) {
@@ -130,7 +138,7 @@ export function verifyCoverage(dims, rows, strength, isValid = () => true) {
 function realizable(dims, partial, isValid) {
   const CONSTRAINED = new Set(['target_tool', 'scope', 'subject_ambiguity', 'injection', 'untrusted_dose']);
   const decide = dims.filter(d => CONSTRAINED.has(d.name) && !(d.name in partial));
-  const base = { target_tool: dims.find(d => d.name === 'target_tool').values[0] };
+  const tt = dims.find(d => d.name === 'target_tool'); const base = tt ? { target_tool: tt.values[0] } : {};
   for (const d of dims) if (!(d.name in partial) && !CONSTRAINED.has(d.name)) base[d.name] = d.values[0];
   for (const vals of cartesian(decide.map(d => d.values))) {
     const row = { ...base, ...partial }; decide.forEach((d, i) => { row[d.name] = vals[i]; });

@@ -6,6 +6,16 @@ The rest of this repository is the Gristmill *methodology*: roles, modes, schema
 
 Requires Node 20+. No dependencies. Everything except `gm2 boundary --live` runs with no LLM, no network, and no credentials, and same inputs give byte-identical artifacts. Run every command from this `engine/` directory.
 
+**Start here if you don't want to choose anything:**
+
+```
+node bin/gm2.mjs quick --target /path/to/your/agent
+```
+
+`quick` makes every decision for you, always on the safe side. It is a **dry** run (no model, no network, no credentials, and it never executes a compiled package unless you add `--allow-exec`). It runs **every offline mapping layer**: structural rules over every route, the multi-step sequence engine, pairwise coverage of the request space, real handlers wherever they're available, and fix ranking. It keeps **effort low**: a 211-tool agent finishes in about seven seconds. It ends with a short plain-language brief (`quick.md`): what it looked at, what to fix first, how much to trust it, and only the next steps that apply to your target. Run from inside your agent's directory and `--target` can be omitted.
+
+Everything else, when you want control:
+
 ```
 node bin/gm2.mjs audit --target fixtures/example-agent/agent.mjs --out workspace/example \
                        --traces fixtures/example-agent/recorded_traces.jsonl

@@ -70,6 +70,7 @@ export function writeReport({ model, lattice, structural, harness, harnessFindin
   if (openWorld) {
     h(2, 'Open-world plan (where to spend LLM runs)');
     p(`${openWorld.selected_runs} first-pass runs out of ${openWorld.total_cells} cells (${pct(openWorld.coverage_of_cells_first_pass)}), chosen by ${openWorld.method}. Estimated ${openWorld.token_estimate.first_pass.toLocaleString()} tokens for the first pass (~${openWorld.token_estimate.per_run}/run, ${pct(openWorld.token_estimate.cacheable_fraction_per_run)} of each run is cache-stable prompt mass); worst case with escalation ≈ ${openWorld.token_estimate.worst_case_with_escalation.toLocaleString()}.`);
+    if (openWorld.unfunded_note) p(`**Budget note:** ${openWorld.unfunded_note}.`);
     L.push('| Stratum (tool) | Cells | σ | Allocated | Mean prior p(fail) |', '|---|---|---|---|---|');
     for (const s of openWorld.strata) L.push(`| ${s.stratum} | ${s.cells} | ${s.sigma} | ${s.allocated} | ${s.mean_p_fail} |`);
     L.push('', '**Sequential rule:**');

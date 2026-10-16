@@ -37,13 +37,20 @@ export function planOpenWorld(model, cells, findings, { budget_runs = 40, repeat
   const sig = new Map();
   let denom = 0;
   for (const [h, xs] of strata) { const s = Math.sqrt(xs.reduce((a, x) => a + x.p_fail * (1 - x.p_fail), 0) / xs.length) || 0.05; sig.set(h, s); denom += xs.length * s; }
+  // Strata ranked by importance: the riskiest cell they hold, then Neyman weight, then name.
+  const maxScore = h => Math.max(...strata.get(h).map(x => x.score));
+  const order = [...strata.keys()].sort((a, b) => maxScore(b) - maxScore(a) || (strata.get(b).length * sig.get(b)) - (strata.get(a).length * sig.get(a)) || a.localeCompare(b));
+  // The one-run floor can only be honoured for as many strata as the budget can pay for. With more
+  // strata than runs (e.g. 211 tools, 20 runs), the most important strata are funded first and the
+  // rest are reported as unfunded — never silently looped over.
+  const funded = new Set(order.slice(0, Math.min(budget_runs, order.length)));
   const alloc = new Map();
   let assigned = 0;
-  for (const [h, xs] of strata) { const n = Math.max(1, Math.round(budget_runs * (xs.length * sig.get(h)) / denom)); alloc.set(h, Math.min(n, xs.length)); assigned += alloc.get(h); }
-  // Trim/extend to the budget deterministically.
-  const order = [...strata.keys()].sort();
-  while (assigned > budget_runs) { for (const h of order) { if (assigned <= budget_runs) break; if (alloc.get(h) > 1) { alloc.set(h, alloc.get(h) - 1); assigned--; } } }
+  for (const [h, xs] of strata) { const n = funded.has(h) ? Math.max(1, Math.round(budget_runs * (xs.length * sig.get(h)) / denom)) : 0; alloc.set(h, Math.min(n, xs.length)); assigned += alloc.get(h); }
+  // Trim/extend to the budget deterministically. Each pass must make progress or it stops.
+  while (assigned > budget_runs) { let shrank = false; for (const h of [...order].reverse()) { if (assigned <= budget_runs) break; if (alloc.get(h) > 1) { alloc.set(h, alloc.get(h) - 1); assigned--; shrank = true; } } if (!shrank) break; }
   while (assigned < budget_runs) { let grew = false; for (const h of order) { if (assigned >= budget_runs) break; if (alloc.get(h) < strata.get(h).length) { alloc.set(h, alloc.get(h) + 1); assigned++; grew = true; } } if (!grew) break; }
+  const unfunded = order.filter(h => alloc.get(h) === 0);
   const selected = [];
   for (const [h, xs] of strata) { xs.sort((a, b) => b.score - a.score || a.cell_id.localeCompare(b.cell_id)); selected.push(...xs.slice(0, alloc.get(h)).map(x => ({ ...x, stratum_n: xs.length, stratum_alloc: alloc.get(h) }))); }
   selected.sort((a, b) => b.score - a.score || a.cell_id.localeCompare(b.cell_id));
@@ -57,11 +64,11 @@ export function planOpenWorld(model, cells, findings, { budget_runs = 40, repeat
   // because a covering array rarely contains two cells one step apart — and the inference being
   // tested is precisely about cells that were never enumerated.
   const known = new Set(cells.map(c => c.cell_id));
-  const dims = deriveDimensions(model);
   const holdout = [];
-  const want = Math.max(1, Math.round(selected.length * holdout_fraction));
+  const want = holdout_fraction > 0 ? Math.max(1, Math.round(selected.length * holdout_fraction)) : 0;
+  const dims = want ? deriveDimensions(model) : [];
   const mutable = dims.filter(x => x.name !== 'target_tool');
-  const stride = Math.max(1, Math.floor(1 / holdout_fraction));
+  const stride = want ? Math.max(1, Math.floor(1 / holdout_fraction)) : 1;
   for (let i = 0; i < selected.length && holdout.length < want; i += stride) {
     const s = selected[i];
     // Try each mutable dimension (starting at a rotating offset) until a valid, not-yet-enumerated neighbour exists.
@@ -87,6 +94,7 @@ export function planOpenWorld(model, cells, findings, { budget_runs = 40, repeat
 
   return {
     method: 'neyman-allocation + information-gain ordering + sequential escalation',
+    unfunded_strata: unfunded.length, unfunded_note: unfunded.length ? `${unfunded.length} of ${order.length} strata got no run at this budget (lowest-risk first); raise --budget to reach them` : null,
     budget_runs, selected_runs: selected.length, total_cells: cells.length,
     coverage_of_cells_first_pass: +(selected.length / cells.length).toFixed(3),
     token_estimate: { per_run: per_run_tokens, first_pass: first_pass_tokens, cacheable_fraction_per_run: +cached_fraction.toFixed(2), worst_case_with_escalation: first_pass_tokens + Math.round(selected.length * 0.3) * (repeats_on_fail - 1) * per_run_tokens },

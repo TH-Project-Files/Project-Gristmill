@@ -65,6 +65,20 @@ flattering itself. (`playbooks/THE_GRIND.md`)
 
 ---
 
+## Just want an answer?
+
+Two zero-decision options. Both are dry: nothing runs against your agent's real systems.
+
+- **One command** (needs Node 20+, nothing to install):
+  ```bash
+  git clone --depth 1 https://github.com/TH-Project-Files/Project-Gristmill.git
+  node Project-Gristmill/engine/bin/gm2.mjs quick --target /path/to/your/agent
+  ```
+  In seconds you get a short brief: what it looked at, what to fix first, how much to trust it,
+  and the next steps that apply. No model, no tokens, no credentials.
+- **The prompt below, answering "quick"** when it asks its questions. It asks only which agent to
+  audit, then runs a short dry campaign with safe defaults and the same brief at the end.
+
 ## Getting Started — the Gristmill Master Audit Prompt
 
 Don't want to wire anything up by hand? Paste the prompt below into any capable agent (Claude
@@ -113,7 +127,8 @@ anything; the engine has no dependencies. If either condition fails, the engine 
 every engine step below is skipped silently; the campaign runs exactly as the methodology describes.
 When loaded, print EXACTLY this confirmation, filling the counts, then go to Phase 2:
   "Gristmill kit loaded: [R] roles, [M] modes, [S] schemas, [K] rubric files. Engine:
-   [available | unavailable]. I'll now scope your campaign — this takes about 6 quick questions."
+   [available | unavailable]. I'll now scope your campaign — this takes about 6 quick questions.
+   Not sure what to pick? Reply "quick" and I'll ask only which agent to audit."
 
 ────────────────────────────────────────────────────────────────────────
 PHASE 2 — SCOPING INTERVIEW  (auto-guide me; recommend defaults; then STOP for answers)
@@ -121,6 +136,17 @@ PHASE 2 — SCOPING INTERVIEW  (auto-guide me; recommend defaults; then STOP for
 Ask me the following as a single compact numbered list. Put your RECOMMENDED default in [brackets]
 so I can just say "defaults" to accept them all. Keep it tight. Question 2 is the load-bearing
 one — present it as a real fork, not a checkbox, and do not let me skip past it.
+QUICK PATH. If I reply "quick" (or say I don't know what to choose), do NOT ask the six questions.
+Ask ONLY question 1 (which agent — a directory or describe.mjs path), then fix everything else:
+posture (A) DRY; engine target (a), read-only, never --allow-exec; modes efficiency, agent-logic,
+security, prompt-injection, tool-coverage; intensity QUICK: 6 scenarios/round, 2 judges (1 blind),
+dry_rounds 1, min_samples_per_cell 3, max_rounds 2; seed imports none; boundary measurement
+skipped. Name the campaign quick-<agent>, write that config, and say in ONE line that it is dry
+and capped at 2 rounds. Skip the confirm step and go straight to Phase 3. In Phase 3, if the
+engine is available run `node bin/gm2.mjs quick --target <agent> --out
+<workspace>/<campaign_id>/engine` instead of the audit command, and show me quick.md first.
+Expect evidence_confidence "directional" and say so; a quick campaign never claims more. In the
+final report, end with the brief's "Next steps" so I know how to go further if I want to.
   1. TARGET — What agent are we polishing? Give its name, version, and one line on what it does.
   2. CAMPAIGN POSTURE — the major decision. Everything downstream (fidelity ceiling, whether any
      credentials are used, blast radius, execute-sample rate) follows from it. Pick ONE:
@@ -185,7 +211,8 @@ PHASE 3 — WORKSPACE & DOCUMENT CREATION
      memory/target_profile.json (stamp captured_at from the real clock — never invent it). Present
      a 5-line target map: shape, tool count by kind, notable unreachable tools, hard constraints
      (flag a missing/`null` call budget), and the top 3 failure domains. Ask me to sanity-check it.
-  e. ENGINE PRE-PASS (engine available only). From the clone's engine/ directory run:
+  e. ENGINE PRE-PASS (engine available only; on the QUICK PATH use `gm2 quick` as Phase 2 says).
+     From the clone's engine/ directory run:
        node bin/gm2.mjs audit --target <ENGINE TARGET> --out <workspace>/<campaign_id>/engine
      It is offline and deterministic: no tokens, no credentials, no target backends. Then:
        • Read the "Extraction notes" at the top of engine/summary.md FIRST and tell me any it lists
