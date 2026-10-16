@@ -2,6 +2,7 @@
 /**
  * gm2 — Gristmill V2 command line.
  *
+ *   gm2 quick   [--target <agent>] [--out <dir>] [--allow-exec]   # NO DECISIONS: dry, full offline mapping, low effort, plain brief
  *   gm2 audit   --target <module.mjs | francisco-dir> --out <dir> [--strength 2] [--budget 40] [--traces x.jsonl] [--now ISO]
  *   gm2 extract --target ... --out <dir>              # model.json + graph.json only
  *   gm2 analyze --target ... --out <dir>              # + structural findings
@@ -21,6 +22,18 @@ const has = (name) => args.includes(`--${name}`);
 
 // `boundary` drives the open world: it probes a runner (mock by default; --live uses the Anthropic
 // runner, which refuses to run without GRISTMILL_SANDBOX=1) and measures defense SHAPES.
+// `quick` is the no-decisions default: dry, every offline mapping layer, low effort, plain-language
+// brief. --target is optional (defaults to the current directory when it looks like an agent).
+if (cmd === 'quick') {
+  const { runQuick } = await import('../lib/quick.mjs');
+  try {
+    const r = await runQuick({ target: opt('target'), out: opt('out'), allowExec: has('allow-exec'), now: opt('now'), log: has('verbose') ? s => console.log('  ' + s) : () => {} });
+    console.log('\n' + r.brief);
+    console.log(`(written to ${r.outDir}${process.platform === 'win32' ? '\\' : '/'}quick.md)`);
+    process.exit(0);
+  } catch (e) { console.error('\n' + e.message + '\n'); process.exit(2); }
+}
+
 if (cmd === 'boundary') {
   const target = opt('target'), out = opt('out');
   if (!target || !out) { console.error('--target and --out are required'); process.exit(2); }
@@ -58,7 +71,8 @@ const STAGES = {
 };
 
 if (!cmd || !(cmd in STAGES) || has('help')) {
-  console.log(`usage: gm2 <${Object.keys(STAGES).join('|')}> --target <path> --out <dir> [--kind module|francisco] [--strength N] [--budget N] [--traces file.jsonl] [--now ISO] [--full-if-at-most N] [--quiet]`);
+  console.log(`usage: gm2 quick [--target <agent>]          (start here: no decisions, dry, plain-language result)
+       gm2 <${Object.keys(STAGES).join('|')}> --target <path> --out <dir> [--kind module|francisco] [--strength N] [--budget N] [--traces file.jsonl] [--now ISO] [--full-if-at-most N] [--quiet]`);
   process.exit(cmd ? 1 : 0);
 }
 const target = opt('target'); const out = opt('out');
