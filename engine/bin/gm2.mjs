@@ -30,8 +30,13 @@ if (cmd === 'boundary') {
   const { resolve } = await import('node:path');
   const { model } = await loadModel(target, opt('kind'));
   let adapter;
-  if (has('live')) { const { createAnthropicRunner } = await import('../lib/runner/anthropic.mjs'); adapter = createAnthropicRunner(model, { modelId: opt('model', 'claude-sonnet-5-5'), nonInteractiveGate: opt('nonint-gate', 'block') }); }
-  else { const { createMockRunner } = await import('../lib/runner/mock.mjs'); adapter = createMockRunner(model, {}); console.log('  (mock runner — synthetic agent; use --live for a real model in a sandbox)'); }
+  if (has('live')) {
+    const { createLiveRunner } = await import('../lib/runner/live.mjs');
+    try { adapter = createLiveRunner(model, { model: opt('model'), transport: opt('transport'), completeCmd: opt('complete-cmd'), nonInteractiveGate: opt('nonint-gate', 'block') }); }
+    catch (e) { console.error('\n' + e.message + '\n'); process.exit(2); }
+    console.log(`  live runner via ${adapter.how}; model ${adapter.describe().model_version}`);
+  }
+  else { const { createMockRunner } = await import('../lib/runner/mock.mjs'); adapter = createMockRunner(model, {}); console.log('  (mock runner — synthetic agent; use --live for a real model via your harness)'); }
   const sequence = runSequenceEngine({ model, depth: +opt('depth', 5) });
   const r = await runBoundaryCampaign({ model, adapter, outDir: resolve(out), rounds: +opt('rounds', 2), budget: +opt('budget', 120), sequence, now: opt('now'), log: has('quiet') ? () => {} : s => console.log('  ' + s) });
   console.log(`\nwrote ${resolve(out)}: boundaries.json thresholds.json radius.json boundary_findings.jsonl threshold_baseline.json next_probes.json observations.jsonl`);

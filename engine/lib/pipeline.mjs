@@ -4,7 +4,7 @@
  *   → select (open-world plan) → report.
  * No LLM is called anywhere in this file. Every artifact is deterministic for a given input.
  */
-import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync, statSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeModel, buildGraph, enumerateRoutes } from './model.mjs';
@@ -28,9 +28,26 @@ const LIB = dirname(fileURLToPath(import.meta.url));
 
 export async function loadModel(target, kind) {
   const p = resolve(target);
-  const k = kind || (existsSync(p) && statSync(p).isDirectory() ? 'francisco' : 'module');
-  const raw = k === 'francisco' ? extractFrancisco(p) : await loadTargetModule(p);
+  const isDir = existsSync(p) && statSync(p).isDirectory();
+  // A directory with a built entry but little/no readable src is a COMPILED package: list its tools
+  // at runtime rather than regex over source that isn't there. Explicit --kind always wins.
+  const k = kind || (isDir ? (hasReadableSrc(p) ? 'francisco' : hasCompiledEntry(p) ? 'compiled' : 'francisco') : 'module');
+  let raw;
+  if (k === 'compiled') { const { extractCompiled } = await import('./extract/from-compiled.mjs'); raw = await extractCompiled(p); if (raw._createTools) { const { bindAll } = await import('./synth/shim.mjs'); bindAll(raw, raw._createTools); } }
+  else raw = k === 'francisco' ? extractFrancisco(p) : await loadTargetModule(p);
   return { model: normalizeModel(raw), kind: k, path: p };
+}
+
+function hasReadableSrc(dir) {
+  const src = join(dir, 'src');
+  if (!existsSync(src)) return false;
+  const stack = [src];
+  while (stack.length) { const d = stack.pop(); for (const e of readdirSync(d)) { const q = join(d, e); if (e === 'node_modules') continue; const st = statSync(q); if (st.isDirectory()) stack.push(q); else if (/\.ts$/.test(e) && !/\.d\.ts$/.test(e)) return true; } }
+  return false;
+}
+function hasCompiledEntry(dir) {
+  const m = (() => { try { return JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')).main; } catch { return null; } })();
+  return [m, 'dist/index.js', 'dist/index.mjs', 'index.js', 'index.mjs'].filter(Boolean).some(c => existsSync(join(dir, c)));
 }
 
 export async function runPipeline(opts) {
