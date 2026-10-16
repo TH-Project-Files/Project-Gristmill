@@ -10,7 +10,11 @@ export function describeAgent() {
 
   // FIX gate:consent@reset_device — gate every route, not just the orchestrator's.
   m.gates.find(g => g.id === 'hitl-reset').via = null;
-  // FIX entry:block-writes@nightly — the scheduled entry cannot reach consent-gated writes.
+  m.gates.find(g => g.id === 'hitl-reset').scope = 'call';   // FIX gate:per-call — re-gate every call on its own subject
+  // FIX entry:block-writes@nightly — the scheduled (non-interactive) entry can never reach a
+  // consent-gated write, because a HITL gate cannot fire there. The nightly job moves to a separate
+  // read-only path, so the only entry into this agent is interactive chat.
+  m.entries = m.entries.filter(e => e.id !== 'nightly');
   m.actors.find(a => a.id === 'ops').tools = ['query_source2'];
   // FIX validator:allowlist@fetch_vendor_page.url
   m.gates.find(g => g.id === 'host-denylist').kind = 'allowlist';

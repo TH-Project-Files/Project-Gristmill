@@ -16,14 +16,14 @@ test('pairwise covering array covers every realizable 2-way interaction with a t
   assert.ok(ca.rows.every(valid), 'all rows satisfy constraints');
   const v = verifyCoverage(dims, ca.rows, 2, valid);
   assert.deepEqual(v.missing, [], 'no realizable pair left uncovered');
-  assert.ok(ca.rows.length < 100 && ca.rows.length >= 11, `rows=${ca.rows.length}`);
+  assert.ok(ca.rows.length < 200 && ca.rows.length >= 16, `rows=${ca.rows.length}`);
 });
 
 test('3-wise covering array also covers every realizable triple', () => {
   const ca = buildCoveringArray(dims, { strength: 3, fullIfAtMost: 10, isValid: valid });
   const v = verifyCoverage(dims, ca.rows, 3, valid);
   assert.deepEqual(v.missing, []);
-  assert.ok(ca.rows.length > 42);
+  assert.ok(ca.rows.length > 100);
 });
 
 test('full product is used when the lattice is small enough, and equals the exact valid count', () => {

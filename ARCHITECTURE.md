@@ -51,6 +51,16 @@
 | Heuristic extraction is labelled | `extraction.confidence` on the model, notes in the report, `evidence_confidence` capped at `directional` |
 | "significant" is never claimed by a dry audit | `evidenceConfidence()` only returns `directional` or `high-confidence` |
 
+## The two multi-dimensional engines (added after the first build)
+
+**Sequence engine (`lib/sequence/`).** Single-request analysis cannot see multi-step abuse where every individual step is fine. The session state machine abstracts a conversation to a dozen boolean facts (tainted, secret, authority, approved-per-tool, wrote, sent, leaked, cross-scope) whose transitions are *derived from the platform model*, not hand-written. The LLM is modelled as a worst-case adversary: at each state it may take any event the skeleton permits, so a finding is a sequence the *platform allows*, independent of phrasing. BFS to a bounded depth dedupes on the state key so the frontier stays small, but every transition is collected (not just newly-seen states) so a property never loses its witness to dedup, and each rule fires once on the transition that introduces the violation (`just_ungated` / `just_leaked` / `just_reused` / `just_handoff`). This is bounded model checking with the LLM as the non-deterministic actor — the reviewer's "assume compromise" made executable.
+
+**Boundary engine (`lib/boundary/`).** The realized geometric idea. Ordered pressure axes give the outcome field a slope to measure. `threshold.mjs` bisects one axis from a base cell and fits a logistic (`t` = threshold, `a` = steepness); `fit.mjs` classifies each sensitive tool's defense as structural / judgment / absent / mixed and measures cross-axis tilt; `radius.mjs` computes how far each observation's verdict generalizes; `refine.mjs` is Ruppert's loop with a Wilson-width quality bound; `regression.mjs` turns thresholds into numeric baselines. Everything runs through a `runner` adapter, so the engine is identical whether driven by the deterministic `mock` (planted boundaries, for validation) or the live `anthropic` runner (real model, real handlers, harness fakes, sandbox-gated).
+
+**Gate enforcement is first-class.** `normalizeModel` materializes prompt policies as *virtual gates* with `enforced_by: 'prompt'`, and `consentOnRoute` counts only code-enforced gates as "present" (prompt ones as `prompt_only`). Every engine therefore distinguishes a real gate from a sentence the model can be talked out of — which is what lets SEC-10, BND-01 and JOIN-01 exist.
+
+**The join.** JOIN-01 is the capstone: the sequence engine proves a path is reachable; the boundary engine measures whether the defense at the end of it actually holds under pressure. A reachable path plus a sloped defense is the highest-severity finding the kit produces, and its fix locus is always code.
+
 ## Extending
 
 - **New structural rule:** add a function to `lib/analyzers/{security,efficiency}.mjs` that returns findings with a `fix_candidates` id from `lib/fixes.mjs`; add its label to `RULE_CATALOG`; add an assertion in `test/analyzers.test.mjs` against a seeded defect in the fixture.

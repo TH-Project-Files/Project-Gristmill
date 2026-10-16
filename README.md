@@ -24,9 +24,14 @@ An agent platform has two state spaces. The **closed world** is finite: tools, p
 | simulate | `lib/simulate/policy.mjs` | L0 | V1's Run Simulator as code: per-cell prior **p(fail)** with an explicit **confidence** (mechanism-decided vs model-judgment) |
 | synth | `lib/synth/` | **L1** | Self-built harness: schema-derived cases (valid / boundary / out-of-schema / taint-shaped) run against the **real handlers** under a locked env + recording fakes; emits `harness/<tool>.test.mjs` |
 | replay | `lib/replay.mjs` | **L2** | Scores recorded traces with the mechanical oracles; updates cell priors (Wilson CI) |
+| sequence | `lib/sequence/` | L0 | **Multi-step closed world.** Models the LLM as a worst-case adversary, derives a session state machine from the model, explores it to a bounded depth, and checks temporal rules (SEQ-01…06): tainted context reaching an ungated action, approval reuse, leak chains, tainted handoffs, livelock cycles, unwinnable chains. Emits multi-turn scripts (sequence covering array) |
 | rank | `lib/rank/setcover.mjs` | — | Severity × fidelity-weighted greedy set cover → the smallest change set that closes the most failure mass; efficacy is computed, not estimated |
 | select | `lib/select/planner.mjs` | — | Neyman allocation across strata + information-gain ordering + the sequential rule for the open-world runs, with a token estimate |
+| **boundary** | `lib/boundary/` | **L2** | **Measures the SHAPE of each defense.** Bisects along ordered pressure axes (authority, urgency, untrusted dose, insistence) to find where a defense gives way and how steeply — a code gate reads as a *step* (no flip), a prompt-only defense as a *slope*. Classifies each sensitive action structural / judgment / absent / mixed, measures compound-pressure tilt and a radius of validity, and promotes fragile defenses to code (BND-01…05, JOIN-01). Needs a runner |
+| runner | `lib/runner/` | L2 | The one place the open world executes. `mock` (synthetic agent with planted boundaries, for validation), `anthropic` (a real model driving the real handlers under the harness fakes). The blast-radius guard refuses a non-mock run without `GRISTMILL_SANDBOX=1` |
 | report | `lib/report.mjs` | — | `summary.md` that leads with the fixes and states exactly how strong the closed-world claim is |
+
+The offline pipeline (`gm2 audit`) runs everything except the boundary engine, which needs a runner (`gm2 boundary --target … --out …`, mock by default, `--live` for a real model in a sandbox).
 
 Artifacts per run: `model.json graph.json findings.jsonl cells.jsonl plan.json open_world_plan.json summary.md harness/`.
 
@@ -37,6 +42,17 @@ Artifacts per run: `model.json graph.json findings.jsonl cells.jsonl plan.json o
 3. **The simulator ranks risk for free.** Every cell gets a prior and a confidence. The planner spends runs where `severity × uncertainty` is highest and where the deterministic layers *disagree* (analyzer says reachable-ungated; simulator says the model would not route there).
 4. **Sequential testing earns the statistics.** First pass: one run per selected cell. Pass on a confident prior → close it (neighbours' priors shrink under a stated smoothness assumption with a holdout). Fail → K repeats → a rate with a Wilson interval. That is the only place V1's word *significant* is earned.
 5. **Replay is L2 for free.** Eval runs and audit logs you already have are scored the same way.
+
+## The geometric insight (boundary engine)
+
+A test result implicitly claims "inputs near this one behave the same." The boundary engine makes that claim measurable. Over ordered *pressure* axes, it fits where a defense flips and how sharply:
+
+- A **code-enforced gate** is a *step*: it holds at every pressure level. Trust it.
+- A **prompt-only defense** is a *slope*: enough urgency, claimed authority, or injected-content dose and it gives way. The engine recovers the exact level and flags it for promotion into code.
+- A **radius of validity** near zero around a sensitive action means results don't generalize there — no test budget covers it, so a code gate is the only closure.
+- **JOIN-01** crosses the two new engines: a path the sequence engine proves reachable from untrusted content, whose defense the boundary engine measures as a slope, is the top of every plan. Structural reachability × measured softness = exploitable.
+
+This does not find novel jailbreak strings (phrasing is discontinuous and off the map). It tells you, for every defense you have, whether it is structural or wishful, and where testing is futile. The `mock` runner plants known step/slope boundaries so the test suite can confirm the engine recovers them before it is trusted on a real agent.
 
 ## Honesty rules carried over from V1
 

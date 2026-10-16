@@ -19,6 +19,28 @@ const cmd = args[0];
 const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i === -1 ? dflt : args[i + 1]; };
 const has = (name) => args.includes(`--${name}`);
 
+// `boundary` drives the open world: it probes a runner (mock by default; --live uses the Anthropic
+// runner, which refuses to run without GRISTMILL_SANDBOX=1) and measures defense SHAPES.
+if (cmd === 'boundary') {
+  const target = opt('target'), out = opt('out');
+  if (!target || !out) { console.error('--target and --out are required'); process.exit(2); }
+  const { loadModel } = await import('../lib/pipeline.mjs');
+  const { runBoundaryCampaign } = await import('../lib/boundary/index.mjs');
+  const { runSequenceEngine } = await import('../lib/sequence/index.mjs');
+  const { resolve } = await import('node:path');
+  const { model } = await loadModel(target, opt('kind'));
+  let adapter;
+  if (has('live')) { const { createAnthropicRunner } = await import('../lib/runner/anthropic.mjs'); adapter = createAnthropicRunner(model, { modelId: opt('model', 'claude-sonnet-5-5'), nonInteractiveGate: opt('nonint-gate', 'block') }); }
+  else { const { createMockRunner } = await import('../lib/runner/mock.mjs'); adapter = createMockRunner(model, {}); console.log('  (mock runner — synthetic agent; use --live for a real model in a sandbox)'); }
+  const sequence = runSequenceEngine({ model, depth: +opt('depth', 5) });
+  const r = await runBoundaryCampaign({ model, adapter, outDir: resolve(out), rounds: +opt('rounds', 2), budget: +opt('budget', 120), sequence, now: opt('now'), log: has('quiet') ? () => {} : s => console.log('  ' + s) });
+  console.log(`\nwrote ${resolve(out)}: boundaries.json thresholds.json radius.json boundary_findings.jsonl threshold_baseline.json next_probes.json observations.jsonl`);
+  console.log(`\nDefense shapes:`);
+  for (const b of r.boundaries.filter(b => b.sensitive)) console.log(`  ${b.tool}: ${b.class}${b.min_pressure_to_break != null ? ` (breaks at pressure ${b.min_pressure_to_break})` : ''}`);
+  for (const f of r.findings.slice(0, 6)) console.log(`  [${f.rule} sev${f.severity}] ${f.summary.slice(0, 100)}`);
+  process.exit(0);
+}
+
 const STAGES = {
   audit: null,
   extract: [],
@@ -26,7 +48,8 @@ const STAGES = {
   lattice: ['analyze', 'lattice'],
   synth: ['analyze', 'lattice', 'synth'],
   replay: ['analyze', 'lattice', 'synth', 'replay'],
-  rank: ['analyze', 'lattice', 'synth', 'replay'],
+  sequence: ['analyze', 'lattice', 'sequence'],
+  rank: ['analyze', 'lattice', 'synth', 'replay', 'sequence'],
 };
 
 if (!cmd || !(cmd in STAGES) || has('help')) {
@@ -39,7 +62,7 @@ if (!target || !out) { console.error('--target and --out are required'); process
 try {
   const r = await runPipeline({
     target, out, kind: opt('kind'), strength: +opt('strength', 2), budget: +opt('budget', 40), traces: opt('traces'), now: opt('now'),
-    fullIfAtMost: +opt('full-if-at-most', 2000), stages: STAGES[cmd], log: has('quiet') ? () => {} : (s) => console.log('  ' + s),
+    fullIfAtMost: +opt('full-if-at-most', 2000), depth: +opt('depth', 5), stages: STAGES[cmd], log: has('quiet') ? () => {} : (s) => console.log('  ' + s),
   });
   console.log(`\nwrote ${r.outDir}`);
   console.log(`  model.json graph.json findings.jsonl cells.jsonl plan.json open_world_plan.json summary.md harness/`);

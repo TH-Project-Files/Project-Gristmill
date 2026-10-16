@@ -157,7 +157,7 @@ export function describeAgent() {
       },
     ],
     gates: [
-      { id: 'hitl-reset', kind: 'hitl', applies_to: ['reset_device'], via: ['orchestrator'] },   // only the orchestrator route is gated
+      { id: 'hitl-reset', kind: 'hitl', applies_to: ['reset_device'], via: ['orchestrator'], scope: 'session' },   // only the orchestrator route is gated; DEFECT S11: approval is session-scoped
       { id: 'id-schema', kind: 'schema', applies_to: ['get_device', 'get_devices_batch', 'query_source2', 'lookup_user', 'find_user'], params: ['device_id', 'device_ids', 'query', 'name'] },
       { id: 'filter-allowlist', kind: 'allowlist', applies_to: ['list_devices'], params: ['filter'] },
       { id: 'expr-allowlist', kind: 'allowlist', applies_to: ['search_users'], params: ['expr'] },

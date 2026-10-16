@@ -79,7 +79,7 @@ test('set cover groups many same-kind fixes into one task while keeping every fi
 test('planner: Neyman allocation respects the budget, orders by score, and the posterior moves toward observations', () => {
   const dims = deriveDimensions(seeded);
   const cells = [];
-  for (const t of ['reset_device', 'get_device', 'search_users']) for (const scope of ['single', 'several']) for (const inj of ['none', 'instruction-in-content']) cells.push(cell(seeded, { target_tool: t, scope, injection: inj }));
+  for (const t of ['reset_device', 'get_device', 'search_users']) for (const scope of ['single', 'several']) for (const inj of ['none', 'instruction-in-content']) cells.push(cell(seeded, { target_tool: t, scope, injection: inj, untrusted_dose: inj === 'none' ? 'none' : 'line' }));
   const plan = planOpenWorld(seeded, cells, [], { budget_runs: 6 });
   assert.equal(plan.selected_runs, 6);
   assert.equal(plan.strata.reduce((a, s) => a + s.allocated, 0), 6);
