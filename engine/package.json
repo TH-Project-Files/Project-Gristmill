@@ -1,0 +1,15 @@
+{
+  "name": "gristmill-v2",
+  "version": "2.0.0-alpha.1",
+  "description": "Gristmill V2 — closed-world exhaustive dry audits (security + efficiency) of agent platforms, with self-built L1 harnesses and a statistically selected open-world plan.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "bin": { "gm2": "bin/gm2.mjs" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "audit:example": "node bin/gm2.mjs audit --target fixtures/example-agent/agent.mjs --out workspace/example",
+    "audit:example:clean": "node bin/gm2.mjs audit --target fixtures/example-agent/agent-fixed.mjs --out workspace/example-fixed"
+  },
+  "engines": { "node": ">=20" }
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gristmill.kit/v2/schemas/platform-model.schema.json",
+  "title": "PlatformModel",
+  "description": "The finite, closed-world structural model of an agent platform. Everything the exhaustive analyzers, the lattice, the policy simulator and the harness synthesizer consume. Produced mechanically by lib/extract/*; the LLM only annotates what static extraction cannot see.",
+  "type": "object",
+  "required": ["target", "extraction", "entries", "actors", "tools", "gates", "env", "sources", "budgets"],
+  "properties": {
+    "target": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "version": { "type": "string" } } },
+    "extraction": {
+      "type": "object",
+      "required": ["method", "confidence"],
+      "properties": {
+        "method": { "type": "string", "enum": ["module", "francisco-heuristic", "manual"] },
+        "confidence": { "type": "string", "enum": ["exact", "heuristic"] },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "kind", "interactive"], "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["chat", "scheduled", "webhook", "cli", "headless"] },
+        "interactive": { "type": "boolean", "description": "Can a human-in-the-loop gate actually fire on this entry?" }
+      } }
+    },
+    "actors": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "kind", "tools"], "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["orchestrator", "subagent"] },
+        "model": { "type": "string" },
+        "prompt": { "type": "string" },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "can_delegate_to": { "type": "array", "items": { "type": "string" } }
+      } }
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "name", "kind", "params", "sinks"], "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": { "type": "string", "enum": ["read", "write", "external-action", "meta"] },
+        "purpose": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "params": { "type": "array", "items": { "type": "object", "required": ["name", "type"], "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["string", "number", "integer", "boolean", "array", "enum", "object"] },
+          "required": { "type": "boolean" },
+          "taint": { "type": "string", "enum": ["none", "url", "path", "sql", "shell", "id", "text", "email"] },
+          "enum": { "type": "array" },
+          "min": { "type": "number" }, "max": { "type": "number" },
+          "minLength": { "type": "integer" }, "maxLength": { "type": "integer" },
+          "maxItems": { "type": "integer" }
+        } } },
+        "sinks": { "type": "array", "items": { "type": "object", "required": ["kind"], "properties": {
+          "kind": { "type": "string", "enum": ["network", "fs", "shell", "db", "output", "log", "external-write", "audit"] },
+          "params": { "type": "array", "items": { "type": "string" }, "description": "Which params flow into this sink." },
+          "sanitized_by": { "type": ["string", "null"], "description": "Gate id that sanitizes/validates the flow, or null." }
+        } } },
+        "env": { "type": "array", "items": { "type": "string" }, "description": "Env var names the tool reads (declared)." },
+        "gates": { "type": "array", "items": { "type": "string" }, "description": "Gate ids intrinsically wrapping this tool regardless of caller." },
+        "limit_param": { "type": ["string", "null"] },
+        "implicit_cap": { "type": "boolean", "description": "The handler bounds its own result set (slice/top/pageSize…) even though no limit parameter is in the contract. Downgrades EFF-06 to informational." },
+        "batch_of": { "type": ["string", "null"], "description": "If this tool is the batch form of another tool, that tool's id." },
+        "retries": { "type": ["object", "null"], "properties": { "max": { "type": "integer" }, "backoff": { "type": "boolean" }, "outage_aware": { "type": "boolean" } } },
+        "errors": { "type": "string", "enum": ["sanitized", "raw", "unknown"] },
+        "scoped": { "type": ["boolean", "null"], "description": "Does the tool bind every call to the caller's tenant/scope? null = not applicable." },
+        "cost_hint": { "type": "integer", "description": "Relative per-call cost (1 cheap .. 5 heavy)." }
+      } }
+    },
+    "gates": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "kind", "applies_to"], "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["hitl", "confirm", "allowlist", "denylist", "budget", "scope", "redaction", "outage-cache", "schema"] },
+        "applies_to": { "type": "array", "items": { "type": "string" }, "description": "Tool ids protected." },
+        "via": { "type": ["array", "null"], "items": { "type": "string" }, "description": "Only on routes through these actor ids; null = every caller." },
+        "params": { "type": "array", "items": { "type": "string" } }
+      } }
+    },
+    "env": { "type": "array", "items": { "type": "object", "required": ["name", "sensitive"], "properties": { "name": { "type": "string" }, "sensitive": { "type": "boolean" } } } },
+    "sources": { "type": "array", "items": { "type": "object", "required": ["id", "kind", "trust"], "properties": {
+      "id": { "type": "string" },
+      "kind": { "type": "string", "enum": ["user", "tool-output", "web", "email", "file", "db"] },
+      "trust": { "type": "string", "enum": ["untrusted", "trusted"] },
+      "feeds": { "type": "array", "items": { "type": "string" }, "description": "Tool ids whose outputs this source represents (for tool-output sources)." }
+    } } },
+    "budgets": { "type": "object", "properties": {
+      "call_budget": { "type": ["integer", "null"] },
+      "max_turns": { "type": ["integer", "null"] },
+      "output_char_limit": { "type": ["integer", "null"] }
+    } },
+    "known_outages": { "type": "array", "items": { "type": "string" } },
+    "multi_tenant": { "type": "boolean" },
+    "policies": { "type": "array", "items": { "type": "string" }, "description": "Normalized policy slugs detected in prompts: aggregate-first, confirm-before-write, never-echo-secrets, outage-cache-first, state-scope, sanitized-errors." }
+  }
+}
