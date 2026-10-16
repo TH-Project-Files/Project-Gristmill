@@ -10,7 +10,7 @@ export function writeReport({ model, lattice, structural, harness, harnessFindin
   const h = (n, s) => L.push(`${'#'.repeat(n)} ${s}`, '');
   const p = (s) => L.push(s, '');
   const routes = enumerateRoutes(model);
-  h(1, `Gristmill V2 dry audit — ${model.target.name} ${model.target.version || ''}`);
+  h(1, `Gristmill engine — dry audit: ${model.target.name} ${model.target.version || ''}`);
   p(`Generated ${now}. Extraction: **${model.extraction.method}** (${model.extraction.confidence}). Evidence confidence: **${plan.evidence_confidence}**.`);
   if (model.extraction.notes?.length) { p('Extraction notes:'); for (const n of model.extraction.notes) L.push(`- ${n}`); L.push(''); }
 

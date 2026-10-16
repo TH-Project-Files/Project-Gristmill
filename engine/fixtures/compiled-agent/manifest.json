@@ -1,0 +1,3 @@
+{ "id": "compiled-demo", "version": "1.0.0", "model": "sonnet",
+  "environment": { "required": [ { "name": "API_TOKEN", "sensitive": true }, { "name": "API_BASE_URL", "sensitive": false } ] },
+  "toolApprovals": { "reset_widget": "ask" } }

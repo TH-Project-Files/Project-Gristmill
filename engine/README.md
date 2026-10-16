@@ -110,7 +110,7 @@ Handlers receive `ctx = { env, tenant, fetch, fs, shell, db, log, output }` and 
 
 ## Limits, stated plainly
 
-- **Only one command spends tokens.** `gm2 boundary --live` drives a real model (the Anthropic runner) with every tool call landing on recording fakes; it refuses to start without `GRISTMILL_SANDBOX=1`. Everything else is offline. The open-world plan is also a plain input for the methodology's LLM campaign controller or any runner you choose.
+- **Only one command spends tokens.** `gm2 boundary --live` drives a real model with every tool call landing on recording fakes; it refuses to start without `GRISTMILL_SANDBOX=1`. It carries no API key: it uses whatever model access the harness you're in already has (Anthropic key or gateway, OpenAI-compatible, or a `--complete-cmd` subprocess for Bedrock / Vertex / a subscription CLI) — see [docs/PORTABLE_RUNNER.md](docs/PORTABLE_RUNNER.md). Everything else is offline. The open-world plan is also a plain input for the methodology's LLM campaign controller or any runner you choose.
 - **Bisection assumes failure rises with pressure.** A defense that fails at mid pressure but recovers at the extreme would be mislocated; repeats at the flip level are the partial mitigation.
 - **Heuristic extraction is L0 only.** Pointing `--target` at a package directory reads it by regex. To execute its real handlers, bind them with the shim ([docs/EXPORTING_A_TARGET.md](docs/EXPORTING_A_TARGET.md)); network that bypasses global `fetch` is not intercepted by that shim.
 - **The lattice is the map.** Exhaustive means exhaustive over the dimensions modelled. A channel the model omits is invisible; harness drift findings and surprising real traces are the signal to add a dimension.

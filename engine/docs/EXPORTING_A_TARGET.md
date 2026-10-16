@@ -6,11 +6,18 @@ increasing order of what they unlock.
 
 | Path | Effort | Fidelity reached | Command |
 |---|---|---|---|
-| **A. Heuristic** — point at a Francisco package directory | none | L0 (structure, sequences) | `gm2 audit --target ~/my-agent --out ws/my-agent` |
-| **B. Bound** — heuristic model + the package's real handlers via the shim | one small file | **L1** (real handlers executed against fakes) | `gm2 audit --target describe.mjs --out ws/my-agent` |
+| **A. Heuristic** — a package with readable `src/**/*.ts` | none | L0 (structure, sequences) | `gm2 audit --target ~/my-agent --out ws/my-agent` |
+| **A′. Compiled** — a package that ships only `dist/index.js` | none | **L1** (tools listed and handlers executed at runtime) | same command; auto-detected |
+| **B. Bound** — a `describe.mjs` that fixes the model and/or stubs deps before binding | one small file | **L1**, corrected model | `gm2 audit --target describe.mjs --out ws/my-agent` |
 | **C. Exact** — hand-written `describeAgent()` | an afternoon | L1, exact model, `high-confidence` eligible | same as B |
 
-Any of the three can then feed `gm2 boundary --live` for L2 measurement.
+Any of these can then feed `gm2 boundary --live` for L2 measurement.
+
+**Which one runs?** On a directory, the engine reads `src/**/*.ts` if present (A); otherwise, if a
+built entry exists (`manifest.main`, `dist/index.js`, package `main`), it imports the package and
+lists tools from `createTools()` at runtime and binds the handlers (A′). Force either with
+`--kind francisco` or `--kind compiled`. Use B when `createTools()` throws on load because it reaches
+for a database, a registry or a client — stub those, then bind.
 
 ## A. Heuristic (zero effort)
 
