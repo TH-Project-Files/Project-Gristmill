@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gristmill.kit/v2/schemas/plan.schema.json",
+  "title": "ImprovementPlan",
+  "description": "The ranked improvement plan. Fixes are ordered by severity-weighted set cover over findings and cells, so the top of the list is the smallest change set that closes the most closed-world failures. evidence_confidence follows V1's honest-significance rule.",
+  "type": "object",
+  "required": ["fixes", "coverage", "evidence_confidence"],
+  "properties": {
+    "fixes": { "type": "array", "items": { "type": "object", "required": ["fix_id", "rank", "kind", "locus", "description", "closes_findings", "efficacy"], "properties": {
+      "fix_id": { "type": "string" },
+      "rank": { "type": "integer" },
+      "kind": { "type": "string" },
+      "locus": { "type": "string", "enum": ["security-guardrail", "tool-contract", "routing-logic", "prompt-policy", "stop-conditions", "confidence-framework", "new-tool", "config"] },
+      "description": { "type": "string" },
+      "closes_findings": { "type": "array", "items": { "type": "string" } },
+      "closes_cells": { "type": "integer" },
+      "efficacy": { "type": "number", "description": "Share of total severity-weighted failing mass this fix closes, given fixes ranked above it." },
+      "cumulative_efficacy": { "type": "number" },
+      "effort": { "type": "integer", "minimum": 1, "maximum": 3 },
+      "regression_risk": { "type": "string", "enum": ["low", "medium", "high"] },
+      "min_fidelity": { "type": "string", "enum": ["L0", "L1", "L2", "L3"] }
+    } } },
+    "coverage": { "type": "object", "properties": {
+      "closed_world_total_cells": { "type": "integer" },
+      "closed_world_cells_enumerated": { "type": "integer" },
+      "closed_world_strength": { "type": "string" },
+      "structural_findings": { "type": "integer" },
+      "harness_findings": { "type": "integer" }
+    } },
+    "evidence_confidence": { "type": "string", "enum": ["directional", "high-confidence", "significant"] },
+    "open_world_plan_ref": { "type": "string" }
+  }
+}
