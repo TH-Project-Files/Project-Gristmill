@@ -43,11 +43,14 @@ if (cmd === 'boundary') {
   const { resolve } = await import('node:path');
   const { model } = await loadModel(target, opt('kind'), { allowExec: has('allow-exec') });
   let adapter;
-  if (has('live')) {
+  if (has('live') || has('handoff')) {
     const { createLiveRunner } = await import('../lib/runner/live.mjs');
-    try { adapter = createLiveRunner(model, { model: opt('model'), transport: opt('transport'), completeCmd: opt('complete-cmd'), nonInteractiveGate: opt('nonint-gate', 'block') }); }
+    const { resolve: rpath } = await import('node:path');
+    const handoff = has('handoff') ? rpath(opt('handoff') || rpath(opt('out'), 'mailbox')) : null;
+    try { adapter = createLiveRunner(model, { model: opt('model'), transport: opt('transport'), completeCmd: opt('complete-cmd'), handoff, handoffTimeoutMs: opt('handoff-timeout') ? +opt('handoff-timeout') * 1000 : undefined, nonInteractiveGate: opt('nonint-gate', 'block') }); }
     catch (e) { console.error('\n' + e.message + '\n'); process.exit(2); }
     console.log(`  live runner via ${adapter.how}; model ${adapter.describe().model_version}`);
+    if (handoff) console.log(`  HANDOFF: answer the turns in ${handoff} (see ${handoff}${process.platform === 'win32' ? '\\' : '/'}MAILBOX.md). Run this command in the background and answer between your tool calls.`);
   }
   else { const { createMockRunner } = await import('../lib/runner/mock.mjs'); adapter = createMockRunner(model, {}); console.log('  (mock runner — synthetic agent; use --live for a real model via your harness)'); }
   const sequence = runSequenceEngine({ model, depth: +opt('depth', 5) });
