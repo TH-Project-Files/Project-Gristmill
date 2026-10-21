@@ -14,6 +14,14 @@ node bin/gm2.mjs quick --target /path/to/your/agent
 
 `quick` makes every decision for you, always on the safe side. It is a **dry** run (no model, no network, no credentials, and it never executes a compiled package unless you add `--allow-exec`). It runs **every offline mapping layer**: structural rules over every route, the multi-step sequence engine, pairwise coverage of the request space, real handlers wherever they're available, and fix ranking. It keeps **effort low**: a 211-tool agent finishes in about seven seconds. It ends with a short plain-language brief (`quick.md`): what it looked at, what to fix first, how much to trust it, and only the next steps that apply to your target. Run from inside your agent's directory and `--target` can be omitted.
 
+**See it in 3D:**
+
+```
+node bin/gm2.mjs render --in workspace/quick-<agent> [--boundary <boundary folder>] [--out viewer.html]
+```
+
+`render` writes one self-contained HTML file (three.js from cdnjs, all data inlined; opens from disk). Five views: a **risk field** that colour-maps the request space — green where it is secure and efficient, red where it bulges into insecure, blue into inefficient, magenta both, height for the size of the bulge, with the worst hidden-axis combination on hover; **defense surfaces** per sensitive tool (a code gate is a flat floor, a prompt-only defense a cliff) once a boundary folder exists; the **wiring** graph with ungated routes and unsanitized taint flows lit; the **state space** with every multi-step witness path lit; and the **request cloud** of lattice cells with the plan's picks ringed.
+
 Everything else, when you want control:
 
 ```

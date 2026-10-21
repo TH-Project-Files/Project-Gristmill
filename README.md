@@ -313,6 +313,13 @@ HONESTLY and CAP IT MECHANICALLY: if the stopping rule did not fire or judge agr
 0.8, the ceiling is "directional" (and never claim "significant" without repeated trials).
 Finally, present me the ranked, Skeptic-gated plan with its honest confidence label, and
 offer to (i) hand the plan to an implementer and (ii) re-run the regression pack after fixes land.
+If the engine ran, also render the picture and give me its path:
+     node bin/gm2.mjs render --in <workspace>/<campaign_id>/engine [--boundary <...>/engine/boundary]
+It is one self-contained HTML file (opens from disk): the request space colour-mapped green where
+secure and efficient, red where it bulges into insecure, blue into inefficient; defense surfaces
+where a boundary run exists; the wiring; the lit multi-step paths. Say which view to open first
+based on the top finding (a BND/JOIN finding → defense surface for that tool; a SEQ finding →
+state space; otherwise the risk field).
 
 INVARIANTS you must never break: never repeat a scenario (the gate is computed, not judged);
 never overwrite append-only memory; never inflate a datum's fidelity; a prediction is never

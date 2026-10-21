@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gristmill viewer</title>
+<style>
+  :root { --bg:#0e1116; --panel:#171b22; --ink:#e6e8ec; --muted:#8b93a1; --line:#2a3140; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff; }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+  #app{display:grid;grid-template-rows:auto 1fr;height:100%}
+  header{display:flex;gap:16px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{font-size:15px;margin:0;font-weight:600}
+  header .sub{color:var(--muted);font-size:12px}
+  nav{display:flex;gap:4px;margin-left:auto}
+  nav button{background:transparent;color:var(--muted);border:1px solid var(--line);padding:6px 12px;border-radius:6px;cursor:pointer}
+  nav button.on{color:var(--ink);border-color:var(--accent);background:#1b2433}
+  main{position:relative;min-height:0}
+  canvas{display:block;width:100%;height:100%}
+  #side{position:absolute;top:12px;left:12px;width:300px;max-height:calc(100% - 24px);overflow:auto;background:rgba(23,27,34,.94);border:1px solid var(--line);border-radius:8px;padding:12px}
+  #side h2{font-size:13px;margin:0 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  #side p{margin:6px 0}
+  #side .k{color:var(--muted)}
+  #side select{width:100%;background:#0e1116;color:var(--ink);border:1px solid var(--line);padding:4px;border-radius:4px;margin:6px 0}
+  #hover{position:absolute;pointer-events:none;background:rgba(14,17,22,.95);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;max-width:320px;display:none}
+  .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;border:1px solid var(--line);margin-right:4px}
+  .structural{color:var(--ok);border-color:var(--ok)} .judgment{color:var(--warn);border-color:var(--warn)} .absent,.mixed{color:var(--bad);border-color:var(--bad)}
+  .legend span{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  .empty{color:var(--muted);padding:10px 0}
+  footer{position:absolute;right:12px;bottom:10px;font-size:11px;color:var(--muted)}
+  @media (max-width:700px){ #side{width:calc(100% - 24px);max-height:45%} }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div><h1 id="title">Gristmill viewer</h1><div class="sub" id="subtitle"></div></div>
+    <nav>
+      <button data-view="risk">Risk field</button>
+      <button data-view="defense">Defense surfaces</button>
+      <button data-view="wiring">Wiring</button>
+      <button data-view="states">State space</button>
+      <button data-view="cloud">Request cloud</button>
+    </nav>
+  </header>
+  <main>
+    <canvas id="c"></canvas>
+    <div id="side"></div>
+    <div id="hover"></div>
+    <footer>drag to orbit · wheel to zoom · shift-drag to pan</footer>
+  </main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script id="gm-data" type="application/json">__GM_DATA__</script>
+<script>
+(function(){
+  const DATA = JSON.parse(document.getElementById('gm-data').textContent);
+  const $ = s => document.querySelector(s);
+  const side = $('#side'), hover = $('#hover');
+  $('#title').textContent = 'Gristmill viewer — ' + (DATA.target ? DATA.target.name + ' ' + (DATA.target.version || '') : 'no model');
+  $('#subtitle').textContent = (DATA.extraction ? DATA.extraction.method + ' (' + DATA.extraction.confidence + ') · ' : '') + DATA.counts.findings + ' findings · ' + DATA.counts.cells + ' cells · ' + DATA.counts.observations + ' observations';
+
+  // ---------- renderer + home-made orbit controls (no extra CDN files needed) ----------
+  const canvas = $('#c');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0e1116);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+  const orbit = { theta: 0.9, phi: 1.05, r: 14, target: new THREE.Vector3(0, 0, 0) };
+  function placeCamera(){ camera.position.set(orbit.target.x + orbit.r*Math.sin(orbit.phi)*Math.cos(orbit.theta), orbit.target.y + orbit.r*Math.cos(orbit.phi), orbit.target.z + orbit.r*Math.sin(orbit.phi)*Math.sin(orbit.theta)); camera.lookAt(orbit.target); }
+  let drag = null;
+  canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, pan: e.shiftKey }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointerup', () => drag = null);
+  canvas.addEventListener('pointermove', e => {
+    if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+      if (drag.pan) { const right = new THREE.Vector3().crossVectors(camera.getWorldDirection(new THREE.Vector3()), camera.up).normalize(); orbit.target.addScaledVector(right, -dx * orbit.r * 0.0015); orbit.target.y += dy * orbit.r * 0.0015; }
+      else { orbit.theta -= dx * 0.006; orbit.phi = Math.max(0.15, Math.min(Math.PI - 0.15, orbit.phi - dy * 0.006)); }
+      placeCamera(); }
+    else pick(e);
+  });
+  canvas.addEventListener('wheel', e => { e.preventDefault(); orbit.r = Math.max(2, Math.min(120, orbit.r * (1 + Math.sign(e.deltaY) * 0.08))); placeCamera(); }, { passive: false });
+  function resize(){ const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  addEventListener('resize', resize);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75)); const dl = new THREE.DirectionalLight(0xffffff, 0.6); dl.position.set(5, 10, 7); scene.add(dl);
+
+  // ---------- helpers ----------
+  const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+  let pickables = [], group = null;
+  function reset(){ if (group) scene.remove(group); group = new THREE.Group(); scene.add(group); pickables = []; hover.style.display = 'none'; }
+  function pick(e){ const r = canvas.getBoundingClientRect(); mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1; mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1; ray.setFromCamera(mouse, camera); const hit = ray.intersectObjects(pickables, false)[0]; if (hit && hit.object.userData.tip) { hover.style.display = 'block'; hover.style.left = (e.clientX - r.left + 14) + 'px'; hover.style.top = (e.clientY - r.top + 14) + 'px'; hover.innerHTML = hit.object.userData.tip; } else hover.style.display = 'none'; }
+  const heat = p => new THREE.Color().setHSL((1 - p) * 0.33, 0.8, 0.5);  // green 0 → red 1
+  // Two-channel risk gradient: green = secure AND efficient; red = security risk; blue = efficiency risk; magenta = both.
+  const risk2 = (sec, eff) => { const g = 1 - Math.max(sec, eff); return new THREE.Color(0.12 + 0.88 * sec, 0.15 + 0.75 * g, 0.12 + 0.88 * eff); };
+  const riskLegend = '<div class="legend" style="margin-top:6px"><span style="background:#2ad94a"></span>secure &amp; efficient <span style="background:#ff2a2a;margin-left:6px"></span>insecure <span style="background:#2a2aff;margin-left:6px"></span>inefficient <span style="background:#ff2aff;margin-left:6px"></span>both</div>';
+  function label(text, pos, size = 0.5, color = '#8b93a1'){ const c = document.createElement('canvas'); c.width = 512; c.height = 64; const x = c.getContext('2d'); x.font = '28px system-ui'; x.fillStyle = color; x.textBaseline = 'middle'; x.fillText(text, 6, 32); const t = new THREE.CanvasTexture(c); const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false })); m.scale.set(size * 8, size, 1); m.position.copy(pos); return m; }
+  function sphere(pos, r, color, tip){ const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), new THREE.MeshStandardMaterial({ color })); m.position.copy(pos); m.userData.tip = tip; group.add(m); pickables.push(m); return m; }
+  function line(a, b, color, opacity = 0.6){ const g = new THREE.BufferGeometry().setFromPoints([a, b]); const l = new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent: true, opacity })); group.add(l); return l; }
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+  // ---------- view: risk field ----------
+  function viewRisk(){
+    reset(); const R = DATA.risk;
+    if (!R.available) { side.innerHTML = '<h2>Risk field</h2><p class="empty">' + esc(R.reason) + '</p>'; return; }
+    const worst = R.tiles.slice(0, 5);
+    side.innerHTML = '<h2>Risk field</h2><p>One tile per tool (' + R.tiles.length + '), worst bulge first. Floor: ' + esc(R.axisX) + ' (x) × ' + esc(R.axisY) + ' (z). Height = predicted chance the request goes wrong, taking the worst case over the hidden axes (' + R.hidden_axes.join(', ') + '); colour says HOW.</p>' + riskLegend
+      + '<p class="k">' + esc(R.note) + '. Hover any cell for its top failure modes; the tile label shows structural findings and the measured defense class where a boundary run exists.</p>'
+      + '<h2 style="margin-top:10px">Biggest bulges</h2>' + worst.map(t => { const mx = Math.max(...t.grid.flat().map(c => c.total)); return '<p><b>' + esc(t.tool) + '</b> peak ' + Math.round(mx * 100) + '% <span class="k">(' + (t.peak.security >= t.peak.efficiency ? 'security' : 'efficiency') + ')</span>' + (t.measured ? ' <span class="pill ' + t.measured.class + '">' + t.measured.class + '</span>' : '') + (t.structural.count ? '<br><span class="k">' + t.structural.count + ' finding(s): ' + t.structural.rules.join(', ') + '</span>' : '') + '</p>'; }).join('');
+    const nx = R.tiles[0].grid.length, ny = R.tiles[0].grid[0].length, SX = 1.0, SY = 1.0, H = 3.2, GAP = 1.6, cols = Math.ceil(Math.sqrt(R.tiles.length));
+    R.tiles.forEach((t, k) => {
+      const ox = (k % cols) * ((nx - 1) * SX + GAP) - (cols - 1) * ((nx - 1) * SX + GAP) / 2, oz = Math.floor(k / cols) * ((ny - 1) * SY + GAP);
+      const geo = new THREE.PlaneGeometry((nx - 1) * SX, (ny - 1) * SY, (nx - 1) * 5, (ny - 1) * 5); geo.rotateX(-Math.PI / 2);
+      const pos = geo.attributes.position, col = [];
+      for (let i = 0; i < pos.count; i++) { const gx = pos.getX(i) / SX + (nx - 1) / 2, gz = pos.getZ(i) / SY + (ny - 1) / 2; const c = bilerpCell(t.grid, gx, gz); pos.setY(i, c.total * H); const cc = risk2(c.security, c.efficiency); col.push(cc.r, cc.g, cc.b); }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals(); geo.translate(ox, 0, oz);
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 })); group.add(mesh);
+      // Invisible pick pads per grid cell so hover explains the exact point.
+      for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) { const c = t.grid[i][j]; const pad = sphere(new THREE.Vector3(ox + (i - (nx - 1) / 2) * SX, c.total * H + 0.05, oz + (j - (ny - 1) / 2) * SY), 0.09, risk2(c.security, c.efficiency), '<b>' + esc(t.tool) + '</b> · ' + esc(R.axisX) + '=' + t.labelsX[i] + ', ' + esc(R.axisY) + '=' + t.labelsY[j] + '<br>security ' + Math.round(c.security * 100) + '% · efficiency ' + Math.round(c.efficiency * 100) + '% · confidence ' + c.confidence + (c.worst_at ? '<br><span class="k">worst when scope=' + c.worst_at.scope + ', source=' + c.worst_at.source_state + ', injection=' + c.worst_at.injection + '</span>' : '') + '<br><span class="k">' + (c.top.join('<br>') || 'no failure mode predicted') + '</span>'); pad.material.transparent = true; pad.material.opacity = 0.0; pad.material.depthWrite = false; }
+      const structural = t.structural.count ? ' · ' + t.structural.count + ' finding' + (t.structural.count === 1 ? '' : 's') : '';
+      group.add(label(t.tool + (t.measured ? ' [' + t.measured.class + ']' : '') + structural, new THREE.Vector3(ox, -0.35, oz + ((ny - 1) / 2) * SY + 0.55), 0.42, t.sensitive ? '#f85149' : '#8b93a1'));
+      if (t.structural.security >= 4 || t.structural.efficiency >= 3) { const ring = new THREE.Mesh(new THREE.RingGeometry((nx - 1) * SX * 0.72, (nx - 1) * SX * 0.78, 48), new THREE.MeshBasicMaterial({ color: t.structural.security >= 4 ? 0xf85149 : 0x58a6ff, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })); ring.rotation.x = -Math.PI / 2; ring.position.set(ox, 0.02, oz); group.add(ring); }
+    });
+    const rows = Math.ceil(R.tiles.length / cols);
+    orbit.target.set(0, 0.8, (rows - 1) * ((ny - 1) * SY + GAP) / 2); orbit.r = Math.max(12, cols * 5.5); placeCamera();
+  }
+  function bilerpCell(g, x, y){ const x0 = Math.max(0, Math.min(g.length - 1, Math.floor(x))), x1 = Math.min(g.length - 1, x0 + 1), y0 = Math.max(0, Math.min(g[0].length - 1, Math.floor(y))), y1 = Math.min(g[0].length - 1, y0 + 1), fx = Math.max(0, Math.min(1, x - x0)), fy = Math.max(0, Math.min(1, y - y0)); const w = [[x0, y0, (1 - fx) * (1 - fy)], [x1, y0, fx * (1 - fy)], [x0, y1, (1 - fx) * fy], [x1, y1, fx * fy]]; const o = { total: 0, security: 0, efficiency: 0 }; for (const [i, j, k] of w) { o.total += g[i][j].total * k; o.security += g[i][j].security * k; o.efficiency += g[i][j].efficiency * k; } return o; }
+
+  // ---------- view: defense surfaces ----------
+  function viewDefense(){
+    reset(); const D = DATA.defense;
+    if (!D.available) { side.innerHTML = '<h2>Defense surfaces</h2><p class="empty">' + esc(D.reason) + '</p>'; return; }
+    let idx = +(side.dataset.surface || 0); const s = D.surfaces[idx];
+    side.innerHTML = '<h2>Defense surface</h2><select id="surf">' + D.surfaces.map((x, i) => '<option value="' + i + '"' + (i === idx ? ' selected' : '') + '>' + esc(x.tool) + ' — ' + x.class + '</option>').join('') + '</select>'
+      + '<p><span class="pill ' + s.class + '">' + s.class + '</span>' + (s.min_pressure_to_break != null ? ' breaks at pressure ' + s.min_pressure_to_break : '') + '</p>'
+      + '<p class="k">Floor: ' + esc(s.axisX) + ' (x) × ' + esc(s.axisY) + ' (z). Height = fitted P(fail). A code gate is a flat floor; a prompt-only defense is a cliff.</p>'
+      + (s.tilt ? '<p>Tilt: raising ' + esc(s.axisY) + ' moves the ' + esc(s.axisX) + ' threshold by ' + s.tilt.beta + ' level/level (r²=' + s.tilt.r2 + ').</p>' : '')
+      + (s.unmeasured.length ? '<p class="k">Unmeasured axis: ' + s.unmeasured.join(', ') + ' (drawn flat).</p>' : '')
+      + '<p class="k">Spheres are real observations (size = runs, colour = observed fail rate). The surface is a model fitted to them' + (D.model_version ? '; answers came from <b>' + esc(D.model_version) + '</b>' : '') + '.</p>'
+      + '<div class="legend"><span style="background:#3fb950"></span>p≈0 <span style="background:#d29922;margin-left:8px"></span>p≈0.5 <span style="background:#f85149;margin-left:8px"></span>p≈1</div>';
+    $('#surf').onchange = e => { side.dataset.surface = e.target.value; viewDefense(); };
+    const nx = s.grid.length, ny = s.grid[0].length, SX = 2.2, SY = 2.2, H = 4;
+    const geo = new THREE.PlaneGeometry((nx - 1) * SX, (ny - 1) * SY, (nx - 1) * 6, (ny - 1) * 6); geo.rotateX(-Math.PI / 2);
+    const col = []; const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) { const gx = (pos.getX(i) / SX) + (nx - 1) / 2, gz = (pos.getZ(i) / SY) + (ny - 1) / 2; const p = bilerp(s.grid, gx, gz); pos.setY(i, p * H); const c = heat(p); col.push(c.r, c.g, c.b); }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals();
+    group.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 })));
+    group.add(new THREE.Mesh(geo.clone(), new THREE.MeshBasicMaterial({ color: 0x0e1116, wireframe: true, transparent: true, opacity: 0.25 })));
+    s.labelsX.forEach((t, i) => group.add(label(t, new THREE.Vector3((i - (nx - 1) / 2) * SX, -0.3, ((ny - 1) / 2) * SY + 0.8), 0.45)));
+    s.labelsY.forEach((t, j) => group.add(label(t, new THREE.Vector3(((nx - 1) / 2) * SX + 0.8, -0.3, (j - (ny - 1) / 2) * SY), 0.45)));
+    group.add(label(s.axisX + ' →', new THREE.Vector3(0, -0.9, ((ny - 1) / 2) * SY + 1.6), 0.5, '#58a6ff')); group.add(label(s.axisY + ' →', new THREE.Vector3(((nx - 1) / 2) * SX + 1.8, -0.9, 0), 0.5, '#58a6ff'));
+    for (const p of s.points) sphere(new THREE.Vector3((p.x - (nx - 1) / 2) * SX, p.p * H + 0.12, (p.y - (ny - 1) / 2) * SY), 0.12 + Math.min(0.25, p.n * 0.03), heat(p.p), '<b>' + esc(s.tool) + '</b><br>' + esc(s.axisX) + '=' + s.labelsX[p.x] + ', ' + esc(s.axisY) + '=' + s.labelsY[p.y] + '<br>observed fail ' + p.fails + '/' + p.n + ' (' + Math.round(p.p * 100) + '%)');
+    orbit.target.set(0, 1.2, 0); orbit.r = 12; placeCamera();
+  }
+  function bilerp(g, x, y){ const x0 = Math.max(0, Math.min(g.length - 1, Math.floor(x))), x1 = Math.min(g.length - 1, x0 + 1), y0 = Math.max(0, Math.min(g[0].length - 1, Math.floor(y))), y1 = Math.min(g[0].length - 1, y0 + 1), fx = Math.max(0, Math.min(1, x - x0)), fy = Math.max(0, Math.min(1, y - y0)); return g[x0][y0] * (1 - fx) * (1 - fy) + g[x1][y0] * fx * (1 - fy) + g[x0][y1] * (1 - fx) * fy + g[x1][y1] * fx * fy; }
+
+  // ---------- view: wiring ----------
+  function viewWiring(){
+    reset(); const W = DATA.wiring;
+    if (!W.available) { side.innerHTML = '<h2>Wiring</h2><p class="empty">' + esc(W.reason) + '</p>'; return; }
+    const colors = { entry: 0x58a6ff, orchestrator: 0xbc8cff, subagent: 0x8b5cf6, tool: 0x8b93a1, gate: 0x3fb950, source: 0xd29922, sink: 0x6e7681 };
+    const ungated = W.edges.filter(e => e.flag === 'ungated-sensitive').length, taint = W.edges.filter(e => e.flag === 'unsanitized-taint').length;
+    side.innerHTML = '<h2>Wiring</h2><p>' + W.nodes.length + ' nodes, ' + W.edges.length + ' edges. Top to bottom: entries → actors → gates → tools → sinks.</p>'
+      + '<p><span class="pill absent">' + ungated + ' ungated route' + (ungated === 1 ? '' : 's') + ' to a sensitive tool</span></p><p><span class="pill judgment">' + taint + ' unsanitized taint flow' + (taint === 1 ? '' : 's') + '</span></p>'
+      + '<div class="legend">' + Object.entries(colors).map(([k, v]) => '<span style="background:#' + v.toString(16).padStart(6, '0') + '"></span>' + k + ' ').join('') + '</div><p class="k">Hover a tool for its findings. Red edges are ungated routes to writes; orange edges are tainted params reaching a dangerous sink unsanitized.</p>';
+    const byId = {}; for (const n of W.nodes) byId[n.id] = n;
+    for (const n of W.nodes) { const tip = '<b>' + esc(n.label) + '</b> <span class="k">' + n.kind + (n.sensitive ? ' · sensitive' : '') + '</span>' + (n.findings.length ? '<br>' + n.findings.slice(0, 8).map(f => f.rule + ' sev' + f.severity + ' ' + f.fidelity).join('<br>') : ''); sphere(new THREE.Vector3(n.x, n.y, n.z), n.sensitive ? 0.34 : n.kind === 'tool' ? 0.24 : 0.3, n.sensitive ? 0xf85149 : colors[n.kind] || 0x888888, tip); group.add(label(n.label, new THREE.Vector3(n.x, n.y + 0.5, n.z), 0.32)); }
+    for (const e of W.edges) { const a = byId[e.from], b = byId[e.to]; if (!a || !b) continue; line(new THREE.Vector3(a.x, a.y, a.z), new THREE.Vector3(b.x, b.y, b.z), e.flag === 'ungated-sensitive' ? 0xf85149 : e.flag === 'unsanitized-taint' ? 0xd29922 : e.kind === 'taints' ? 0x6b5a2a : 0x2a3140, e.flag ? 0.95 : 0.5); }
+    orbit.target.set(0, -4.5, 0); orbit.r = 22; placeCamera();
+  }
+
+  // ---------- view: state space ----------
+  function viewStates(){
+    reset(); const S = DATA.states;
+    if (!S.available) { side.innerHTML = '<h2>State space</h2><p class="empty">' + esc(S.reason) + '</p>'; return; }
+    const wit = S.nodes.filter(n => n.witness.length);
+    side.innerHTML = '<h2>State space</h2><p>' + S.nodes.length + ' distinct states, ' + S.edges.length + ' transitions, entries: ' + S.entries.join(', ') + '. Depth increases downward.</p>'
+      + '<p><span class="pill absent">' + wit.length + ' witness state' + (wit.length === 1 ? '' : 's') + '</span> <span class="k">(where a sequence rule fired: ungated / reused / leaked / handoff)</span></p>'
+      + '<p class="k">Lit paths run from the start state down to each witness. Hover a state for its flags.</p>'
+      + (S.findings.length ? '<h2 style="margin-top:10px">Sequence findings</h2>' + S.findings.slice(0, 8).map(f => '<p><b>' + f.rule + '</b> sev' + f.severity + '<br><span class="k">' + esc(f.path.join(' → ')) + '</span></p>').join('') : '');
+    const byId = {}; for (const n of S.nodes) byId[n.id] = n;
+    for (const n of S.nodes) { const fl = Object.entries(n.flags).filter(([k, v]) => v && k !== 'approved').map(([k]) => k).concat(n.flags.approved ? ['approved×' + n.flags.approved] : []); const tip = '<b>depth ' + n.depth + '</b> · ' + esc(n.actor) + ' · ' + esc(n.entry) + '<br>' + (fl.join(', ') || 'clean') + (n.witness.length ? '<br><span style="color:#f85149">' + n.witness.join(', ') + '</span>' : '') + (n.event ? '<br><span class="k">via ' + esc(n.event) + '</span>' : ''); sphere(new THREE.Vector3(n.x, n.y, n.z), n.witness.length ? 0.22 : n.on_witness_path ? 0.14 : 0.09, n.witness.length ? 0xf85149 : n.on_witness_path ? 0xd29922 : n.flags.tainted ? 0x8b5cf6 : 0x3b4454, tip); }
+    for (const e of S.edges) { const a = byId[e.from], b = byId[e.to]; if (!a || !b) continue; line(new THREE.Vector3(a.x, a.y, a.z), new THREE.Vector3(b.x, b.y, b.z), e.lit ? 0xf85149 : 0x2a3140, e.lit ? 0.95 : 0.35); }
+    S.entries.forEach((en, i) => group.add(label(en, new THREE.Vector3(i * 6, 1.0, 0), 0.5, '#58a6ff')));
+    orbit.target.set((S.entries.length - 1) * 3, -2.5, 0); orbit.r = 16; placeCamera();
+  }
+
+  // ---------- view: request cloud ----------
+  function viewCloud(){
+    reset(); const C = DATA.cloud;
+    if (!C.available) { side.innerHTML = '<h2>Request cloud</h2><p class="empty">' + esc(C.reason) + '</p>'; return; }
+    const picked = C.points.filter(p => p.picked).length, held = C.points.filter(p => p.holdout).length;
+    side.innerHTML = '<h2>Request cloud</h2><p>' + C.points.length + ' representative cells of the request lattice, over ' + C.axes.x + ' (x), ' + C.axes.y + ' (y), ' + C.axes.z + ' (z).</p>'
+      + '<p>Colour = the two-channel risk gradient from the simulator prior; size = severity weight. <span class="pill" style="color:#58a6ff;border-color:#58a6ff">' + picked + ' chosen for real runs</span> <span class="pill">' + held + ' holdout</span></p>' + riskLegend + '<p class="k">Chosen runs are ringed in blue. Hover a point for its coordinates.</p>';
+    const S = 2.0;
+    for (const p of C.points) { const tip = '<b>' + esc(p.tool) + '</b>' + (p.picked ? ' <span style="color:#58a6ff">run</span>' : '') + (p.holdout ? ' <span class="k">holdout</span>' : '') + '<br>security ' + Math.round(p.security * 100) + '% · efficiency ' + Math.round(p.efficiency * 100) + '% · confidence ' + p.confidence + '<br><span class="k">' + Object.entries(p.coords).filter(([k]) => k !== 'target_tool').map(([k, v]) => k + '=' + v).join(', ') + '</span>'; const v = new THREE.Vector3((p.x - 1.5) * S, (p.y - 1.5) * S, (p.z - 1.5) * S); const m = sphere(v, 0.06 + p.severity * 0.03, risk2(p.security, p.efficiency), tip); if (p.holdout) m.material.wireframe = true; if (p.picked) { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1 + p.severity * 0.03, 0.02, 6, 24), new THREE.MeshBasicMaterial({ color: 0x58a6ff })); ring.position.copy(v); ring.lookAt(camera.position); group.add(ring); } }
+    const ax = (name, v, c) => group.add(label(name + ' →', v, 0.45, c));
+    ax(C.axes.x, new THREE.Vector3(4.2, -3.4, -3.4), '#58a6ff'); ax(C.axes.y, new THREE.Vector3(-3.4, 4.2, -3.4), '#58a6ff'); ax(C.axes.z, new THREE.Vector3(-3.4, -3.4, 4.2), '#58a6ff');
+    orbit.target.set(0, 0, 0); orbit.r = 14; placeCamera();
+  }
+
+  const views = { risk: viewRisk, defense: viewDefense, wiring: viewWiring, states: viewStates, cloud: viewCloud };
+  function show(v){ document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === v)); views[v](); location.hash = v; }
+  document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.view));
+  resize(); placeCamera();
+  show(views[location.hash.slice(1)] ? location.hash.slice(1) : (DATA.risk.available ? 'risk' : DATA.defense.available ? 'defense' : 'wiring'));
+  (function loop(){ renderer.render(scene, camera); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>
