@@ -15,7 +15,7 @@ export function explore(model, { depth = 5, entries = null } = {}) {
   for (const e of (entries || model.entries.map(x => x.id))) {
     const start = initialState(model, e);
     const seen = new Set([stateKey(start)]);
-    const all = [{ state: start, path: [] }];
+    const all = [{ state: start, path: [], key: stateKey(start), parent: null, event: null }];
     let frontier = [{ state: start, path: [] }];
     let expanded = 0;
     for (let d = 0; d < depth && frontier.length; d++) {
@@ -29,7 +29,7 @@ export function explore(model, { depth = 5, entries = null } = {}) {
         // marker (a rule's witness) — everything else is bulk the rules never read, and dropping
         // it keeps memory linear in distinct states rather than in raw expansions.
         if (isNew || ns.just_ungated || ns.just_reused || ns.just_leaked || ns.just_handoff) {
-          const rec = { state: ns, path: [...path, describeEvent(ev)] };
+          const rec = { state: ns, path: [...path, describeEvent(ev)], key: k, parent: stateKey(state), event: describeEvent(ev) };
           all.push(rec);
           if (isNew) { seen.add(k); next.push(rec); }
         }

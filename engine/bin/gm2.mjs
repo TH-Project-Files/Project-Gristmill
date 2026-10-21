@@ -22,6 +22,21 @@ const has = (name) => args.includes(`--${name}`);
 
 // `boundary` drives the open world: it probes a runner (mock by default; --live uses the Anthropic
 // runner, which refuses to run without GRISTMILL_SANDBOX=1) and measures defense SHAPES.
+// `render` draws an audit (+ optional boundary) folder as one self-contained 3D HTML viewer.
+if (cmd === 'render') {
+  const inDir = opt('in') || opt('target'); if (!inDir) { console.error('usage: gm2 render --in <audit folder> [--boundary <boundary folder>] [--out viewer.html]'); process.exit(2); }
+  const { renderViewer } = await import('../lib/render/index.mjs');
+  try {
+    const r = renderViewer({ auditDir: inDir, boundaryDir: opt('boundary'), out: opt('out'), now: opt('now') });
+    const v = r.data;
+    console.log(`wrote ${r.outFile}`);
+    console.log(`  risk field: ${v.risk.available ? v.risk.tiles.length + ' tool tiles, worst: ' + v.risk.tiles.slice(0, 3).map(t => t.tool).join(', ') : 'none'}`);
+    console.log(`  defense surfaces: ${v.defense.available ? v.defense.surfaces.length + ' sensitive tool(s)' : 'none — ' + v.defense.reason}`);
+    console.log(`  wiring: ${v.wiring.available ? v.wiring.nodes.length + ' nodes' : 'none'} · state space: ${v.states.available ? v.states.nodes.length + ' states' : 'none — ' + v.states.reason} · request cloud: ${v.cloud.available ? v.cloud.points.length + ' cells' : 'none'}`);
+    process.exit(0);
+  } catch (e) { console.error('\n' + e.message + '\n'); process.exit(2); }
+}
+
 // `quick` is the no-decisions default: dry, every offline mapping layer, low effort, plain-language
 // brief. --target is optional (defaults to the current directory when it looks like an agent).
 if (cmd === 'quick') {

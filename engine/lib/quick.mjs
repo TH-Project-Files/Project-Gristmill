@@ -66,7 +66,7 @@ function writeBrief(r, { target, allowExec }) {
   const steps = nextSteps({ model, notes, allowExec, target, harness });
   L.push('## Next steps (only the ones that apply)', '');
   steps.forEach((s, i) => L.push(`${i + 1}. ${s}`));
-  L.push('', `Full detail: summary.md and plan.json in this folder.`, '');
+  L.push('', `Full detail: summary.md and plan.json in this folder. To see it in 3D (risk field colour-mapped secure/efficient vs. insecure/inefficient): \`node bin/gm2.mjs render --in <this folder>\`.`, '');
   return L.join('\n');
 }
 
