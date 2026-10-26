@@ -8,7 +8,7 @@
  * the full history). The same inputs are written to workflow/inputs.json for runner/replay.mjs.
  *
  * Usage:
- *   node runner/bundle.mjs --campaign workspace/<campaign_id> --adapter target-adapters/<x>.adapter.mjs
+ *   node runner/bundle.mjs --campaign workspace/<campaign_id> --adapter target-adapters/<x>.adapter.mjs [--model haiku|sonnet|opus]
  * Writes:
  *   workspace/<campaign_id>/workflow/campaign.workflow.js   (pass as the Workflow tool's scriptPath)
  *   workspace/<campaign_id>/workflow/inputs.json            (replay.mjs reads this)
@@ -65,7 +65,8 @@ export function coreBody() {
   return body;
 }
 
-export async function buildInputs({ campaignDir, adapterPath }) {
+export async function buildInputs({ campaignDir, adapterPath, model = null }) {
+  if (model !== null && !['haiku', 'sonnet', 'opus'].includes(model)) throw new Error(`--model must be haiku, sonnet or opus (got ${model})`);
   const config = JSON.parse(readText(path.join(campaignDir, 'run-config.json')));
   const cfgErr = validateValue('run-config.schema.json', config);
   if (cfgErr.length) throw new Error(`run-config.json is schema-invalid:\n  ${cfgErr.join('\n  ')}`);
@@ -89,7 +90,7 @@ export async function buildInputs({ campaignDir, adapterPath }) {
   for (const f of readdirSync(path.join(KIT, 'schemas')).filter(f => f.endsWith('.schema.json')).sort()) schemas[f] = JSON.parse(readText(path.join(KIT, 'schemas', f)));
 
   const memory_seed = memorySeed(campaignDir, config.campaign_id);
-  const inputs = { config, adapter: JSON.parse(JSON.stringify(adapter)), texts: { roles, modes, rubrics }, schemas, memory_seed, memory_seed_sha: seedHash(memory_seed), core_sha: sha(coreBody()) };
+  const inputs = { config, adapter: JSON.parse(JSON.stringify(adapter)), texts: { roles, modes, rubrics }, schemas, memory_seed, memory_seed_sha: seedHash(memory_seed), core_sha: sha(coreBody()), model };
   inputs.inputs_sha = sha(JSON.stringify({ ...inputs, inputs_sha: undefined }));
   return inputs;
 }
@@ -102,7 +103,7 @@ export function bundleScript(inputs) {
   phases.push({ title: 'Plan' }, { title: 'Regress' });
   const meta = {
     name: `gristmill-${id}`,
-    description: `Gristmill campaign ${id}: roles as subagents, gates and scoring math in code, describe-only (no target execution)`,
+    description: `Gristmill campaign ${id}: roles as subagents${inputs.model ? ` on ${inputs.model}` : ''}, gates and scoring math in code, describe-only (no target execution)`,
     phases,
   };
   return [
@@ -116,7 +117,9 @@ export function bundleScript(inputs) {
     "  throw new Error('pass args: { now: \"<UTC ISO time from the real clock, e.g. 2026-10-26T18:04:00Z>\" }');",
     '}',
     'const io = memoryIo(INPUTS.memory_seed);',
-    'const engine = workflowEngine({ agent, texts: INPUTS.texts, schemas: INPUTS.schemas, config: INPUTS.config });',
+    '// --model: every role call (verifiers included) runs on this model instead of the session model.',
+    'const roleAgent = INPUTS.model ? (p, o) => agent(p, { ...o, model: INPUTS.model }) : agent;',
+    'const engine = workflowEngine({ agent: roleAgent, texts: INPUTS.texts, schemas: INPUTS.schemas, config: INPUTS.config });',
     'const res = await runCampaign({ config: INPUTS.config, engine, adapter: dataAdapter(INPUTS.adapter), io, kitDir: "", now: args.now, log });',
     'return { ...res, now: args.now, inputs_sha: INPUTS.inputs_sha, summary: io.read(res.runDir + "/summary.md") };',
     '',
@@ -127,7 +130,7 @@ async function main() {
   const a = argv();
   if (!a.campaign || !a.adapter) { console.error('usage: node runner/bundle.mjs --campaign workspace/<id> --adapter <adapter.mjs>'); process.exit(2); }
   const campaignDir = path.resolve(a.campaign);
-  const inputs = await buildInputs({ campaignDir, adapterPath: a.adapter });
+  const inputs = await buildInputs({ campaignDir, adapterPath: a.adapter, model: typeof a.model === 'string' ? a.model : null });
   const outDir = path.join(campaignDir, 'workflow');
   mkdirSync(outDir, { recursive: true });
   const script = bundleScript(inputs);

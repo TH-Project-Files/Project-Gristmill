@@ -296,6 +296,20 @@ test('readCalls: on a resumed run the latest result for a tag wins; an unfinishe
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
+test('bundle --model puts that model on every role call, verifiers included', async () => {
+  const config = CONFIG('test-model');
+  const adapter = { ...ADAPTER, code_access: { root: 'C:/repo', sha: 'abc' } };
+  const inputs = { config, adapter, texts: kitTexts(config.evaluation_modes), schemas: kitSchemas(), memory_seed: {}, memory_seed_sha: seedHash({}), core_sha: 'x', inputs_sha: 'y', model: 'haiku' };
+  const inner = fakeAgent([]);
+  const opts = [];
+  const agent = async (p, o) => { opts.push(o); return inner(p, o); };
+  const body = bundleScript(inputs).replace(/^export const meta = /, 'const meta = ');
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  await new AsyncFunction('agent', 'log', 'args', body)(agent, () => {}, { now: NOW });
+  assert.ok(opts.length > 0 && opts.every(o => o.model === 'haiku'));
+  assert.ok(opts.some(o => o.agentType === 'Explore'), 'verifier keeps its read-only agent type');
+});
+
 test('bundle -> workflow (in memory) -> replay (to disk) round trip reproduces the artifacts', async () => {
   const id = `_test-replay-${process.pid}`;
   const campDir = path.join(KIT, 'workspace', id);
