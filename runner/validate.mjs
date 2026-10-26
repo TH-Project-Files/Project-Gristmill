@@ -81,29 +81,44 @@ function check(schemaFile, dataFile) {
   return bad === 0;
 }
 
-if (process.argv[2] && process.argv[3]) {
-  process.exit(check(process.argv[2], process.argv[3]) ? 0 : 1);
+/** Errors (empty = valid) for one value against a schema file name or path in schemas/. */
+export function validateValue(schemaFile, data) {
+  const p = /[\\/]/.test(schemaFile) ? schemaFile : join(SCHEMAS, schemaFile);
+  const schema = loadSchema(p);
+  const errors = [];
+  validate(schema, data, '$', schema, errors);
+  return errors;
 }
 
-// Default: schemas parse + validate the example-campaign artifacts.
-let ok = true;
-const camp = join(KIT, 'workspace', 'example-campaign');
-const runs = existsSync(join(camp, 'runs')) ? readdirSync(join(camp, 'runs')) : [];
-const runDir = runs.length ? join(camp, 'runs', runs[0]) : null;
-const pairs = [
-  ['target-profile.schema.json', join(camp, 'memory', 'target_profile.json')],
-  ['fingerprint.schema.json', join(camp, 'memory', 'scenario_fingerprints.jsonl')],
-  ['finding.schema.json', join(camp, 'memory', 'long_term_findings.jsonl')],
-  ['cluster.schema.json', join(camp, 'memory', 'issue_clusters.json')],
-  runDir && ['scenario.schema.json', join(runDir, 'scenarios.jsonl')],
-  runDir && ['trace.schema.json', join(runDir, 'traces.jsonl')],
-  runDir && ['score.schema.json', join(runDir, 'scores.jsonl')],
-  runDir && ['plan.schema.json', join(runDir, 'plan.json')],
-  runDir && ['regression.schema.json', join(runDir, 'regression.json')],
-  runDir && ['run-config.schema.json', join(runDir, 'config.json')],
-].filter(Boolean);
-for (const [s, d] of pairs) {
-  if (!existsSync(d)) { console.log(`skip ${d.split(/[\\/]/).pop()} (not present)`); continue; }
-  ok = check(join(SCHEMAS, s), d) && ok;
+export { check };
+
+function cli() {
+  if (process.argv[2] && process.argv[3]) {
+    process.exit(check(process.argv[2], process.argv[3]) ? 0 : 1);
+  }
+  // Default: schemas parse + validate the example-campaign artifacts.
+  let ok = true;
+  const camp = join(KIT, 'workspace', 'example-campaign');
+  const runs = existsSync(join(camp, 'runs')) ? readdirSync(join(camp, 'runs')) : [];
+  const runDir = runs.length ? join(camp, 'runs', runs[0]) : null;
+  const pairs = [
+    ['target-profile.schema.json', join(camp, 'memory', 'target_profile.json')],
+    ['fingerprint.schema.json', join(camp, 'memory', 'scenario_fingerprints.jsonl')],
+    ['finding.schema.json', join(camp, 'memory', 'long_term_findings.jsonl')],
+    ['cluster.schema.json', join(camp, 'memory', 'issue_clusters.json')],
+    runDir && ['scenario.schema.json', join(runDir, 'scenarios.jsonl')],
+    runDir && ['trace.schema.json', join(runDir, 'traces.jsonl')],
+    runDir && ['score.schema.json', join(runDir, 'scores.jsonl')],
+    runDir && ['plan.schema.json', join(runDir, 'plan.json')],
+    runDir && ['regression.schema.json', join(runDir, 'regression.json')],
+    runDir && ['run-config.schema.json', join(runDir, 'config.json')],
+  ].filter(Boolean);
+  for (const [s, d] of pairs) {
+    if (!existsSync(d)) { console.log(`skip ${d.split(/[\\/]/).pop()} (not present)`); continue; }
+    ok = check(join(SCHEMAS, s), d) && ok;
+  }
+  process.exit(ok ? 0 : 1);
 }
-process.exit(ok ? 0 : 1);
+
+// The CLI runs only under plain node, never on import.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) cli();

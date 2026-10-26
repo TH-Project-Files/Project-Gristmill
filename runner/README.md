@@ -1,7 +1,7 @@
 # Reference runner
 
 `gristmill.workflow.js` automates one campaign end-to-end. It has one control flow
-(`runCampaign`) and two interchangeable **engines**:
+(`runCampaign`, in the import-free `core.js`) and two interchangeable **engines**:
 
 - **offlineEngine** — deterministic, dependency-free role stand-ins driven by a built-in
   `SimulationAdapter`. No LLM, no network. This is what runs when you invoke the file directly,
@@ -63,27 +63,56 @@ These live in `runCampaign`, not in any role prompt, so they hold no matter what
 
 ## Run a real campaign (Workflow tool)
 
-The Workflow tool executes a script that uses the `agent()`/`pipeline()` globals. To wire the
-`workflowEngine`, each role method wraps an `agent()` call whose prompt is the matching
-`roles/NN-*.md` file and whose `schema` is the matching `schemas/*.schema.json`:
+Workflow scripts have no imports and no filesystem, so a real campaign is three steps:
+**bundle** (node), **run** (the Workflow tool), **replay** (node).
 
-| Control-flow step | Role prompt | Output schema | Suggested Workflow primitive |
+```bash
+# 1. Bundle: inline runner/core.js + roles, modes, rubrics, schemas, the run-config, the
+#    adapter's data and the campaign's current memory into one self-contained script.
+node runner/bundle.mjs --campaign workspace/<campaign_id> --adapter target-adapters/<x>.adapter.mjs
+#    -> workspace/<campaign_id>/workflow/campaign.workflow.js  (+ inputs.json for replay)
+
+# 2. Run it from Claude Code (the time comes from the real clock, never invented):
+#    Workflow({ scriptPath: "workspace/<campaign_id>/workflow/campaign.workflow.js",
+#               args: { now: "2026-10-26T17:25:35Z" } })
+
+# 3. Replay: re-run the same control flow under node, answering every agent() call from the
+#    finished run's journal, and write + validate the artifact chain on disk.
+node runner/replay.mjs --campaign workspace/<campaign_id>   --transcripts ~/.claude/projects/<project>/<session>/subagents/workflows/<wf_run_id> --now <same ISO>
+```
+
+Every `agent()` call carries a deterministic tag (`[gm-call:<label>]`) on its first line;
+replay maps tag -> result from the journal and the agent transcripts. Same inputs + same answers
+= the same artifacts the workflow computed in memory. Replay refuses when `core.js` or the
+campaign memory changed since bundling, or when the run directory already exists (it would
+double-append). It also writes `runs/<run>/agent_calls.jsonl`: every call and its answer, which
+is where the judges' axis justifications and the verifiers' reasons live.
+
+Each role is one subagent per call, with its `roles/NN-*.md` prompt and a schema derived from
+`schemas/*.schema.json` (harness-owned fields removed):
+
+| Control-flow step | Role prompt | Calls | Harness computes (never the subagent) |
 |---|---|---|---|
-| characterize | `roles/01-cartographer.md` | `target-profile` | single `agent()` (once) |
-| generate | `roles/02-scenario-smith.md` | `scenario[]` | one `agent()` per mode (`parallel`) |
-| run | `roles/03-run-simulator.md` | `trace` | `pipeline` stage 1 (per scenario) |
-| score | `roles/04-trace-judge.md` | `score` | `pipeline` stage 2, `parallel` over N judges |
-| verify | `roles/04` (Verify mode) | updated `verify_status` | `parallel` refuters per finding |
-| cluster | `roles/05-root-cause-analyst.md` | `cluster[]` | barrier `agent()` |
-| plan | `roles/06-remediation-planner.md` | `plan` | single `agent()` |
-| skeptic | `roles/07-skeptic.md` | gated `plan` | single `agent()` |
-| regression | `roles/08-regression-warden.md` | `regression` | single `agent()` |
+| characterize | `roles/01-cartographer.md` | 1, or 0 when the adapter carries a validated profile | `captured_at` |
+| generate | `roles/02-scenario-smith.md` | 1 per mode per round (the mode's whole allocation) | ids, `normalized_text`, `coverage_cell`, `created_round`, the similarity gate |
+| run | `roles/03-run-simulator.md` | 1 per scenario | `fidelity` (L0 unless the adapter executed a mechanism), `cost.estimated`, enum filtering |
+| score | `roles/04-trace-judge.md` | `judge_panel_size` per scenario, concurrent; blind ones get redacted inputs | `overall`, `pass`, `sub_scores`, finding ids/fidelity/`verify_status`, panel merge |
+| verify | `roles/04` (Verify mode) | 1 per scenario with findings, a separate context told to refute | the L0 cap (CONFIRMED -> UNCERTAIN) |
+| cluster | `roles/05-root-cause-analyst.md` | 1 per round | every aggregate, `rank_score`, stability; unplaced findings still clustered |
+| plan | `roles/06-remediation-planner.md` | 1 | priority, unknown regression ids dropped, unaddressed clusters deferred with a reason |
+| skeptic | `roles/07-skeptic.md` | 1 | `accepted` without a CONFIRMED L1+ member -> `needs-more-evidence`; confidence ceiling |
+| regression | `roles/08-regression-warden.md` | 1, or 0 when nothing was accepted/narrowed | baselines from consensus scores |
 
-The canonical fan-out shape is `pipeline(scenarios, simulate, score, verify)` so each scenario
-flows through independently, with an adversarial `parallel` verify per finding — exactly the
-pattern in the Workflow tool's docs. The offline stand-ins document the precise I/O each
-`agent()` must produce, so you can port one method at a time and diff against the deterministic
-baseline.
+A skipped or dead subagent is a hole, never a crash: a scenario without a trace or any judge is
+reported as unscored; a missing verifier leaves findings UNCERTAIN; a missing Root-Cause Analyst
+falls back to issue_class grouping; a missing Skeptic verdict is `needs-more-evidence`.
+
+The workflow engine never executes the target: `simulator(..., 'L2'|'L3')` throws, and the
+bundler refuses adapters that export `execute()`. Real runs go only through
+`safety/safe-execute.mjs`.
+
+Tests: `node --test runner/test/` (offline determinism, the honesty guarantees under a
+deliberately dishonest fake agent, blinding, and the bundle -> run -> replay round trip).
 
 ## Swapping in your target's adapter
 

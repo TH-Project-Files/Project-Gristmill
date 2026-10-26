@@ -1,0 +1,30 @@
+name: runner
+
+# The reference runner: offline determinism, the workflow engine's honesty guarantees under a
+# scripted fake agent, the bundle -> run -> replay round trip, and the worked example's artifacts
+# against the schemas. No secrets, no network beyond checkout, no model calls.
+
+on:
+  push:
+    paths: ['runner/**', 'schemas/**', 'roles/**', 'modes/**', 'rubrics/**', 'workspace/example-campaign/**', '.github/workflows/runner.yml']
+  pull_request:
+    paths: ['runner/**', 'schemas/**', 'roles/**', 'modes/**', 'rubrics/**', 'workspace/example-campaign/**', '.github/workflows/runner.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Runner tests
+        run: node --test runner/test/*.test.mjs
+      - name: Worked example validates against the schemas
+        run: node runner/validate.mjs
