@@ -13,6 +13,7 @@
  * trust it, and only the next steps that actually apply to this target.
  */
 import { existsSync, statSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { resolve, join, basename } from 'node:path';
 import { runPipeline } from './pipeline.mjs';
 import { enumerateRoutes } from './model.mjs';
@@ -27,18 +28,31 @@ export function resolveQuickTarget(target, cwd = process.cwd()) {
   return null;
 }
 
-export async function runQuick({ target, out, allowExec = false, now, log = () => {} } = {}) {
+export async function runQuick({ target, out, allowExec = false, render = true, boundaryDir = null, now, log = () => {} } = {}) {
   const t = resolveQuickTarget(target);
   if (!t) throw new Error('No target given and the current directory does not look like an agent (no manifest.json, src/, describe.mjs or agent.mjs). Pass --target <agent directory or describe.mjs>.');
   const name = basename(statSync(t).isDirectory() ? t : resolve(t, '..')).replace(/[^\w.-]+/g, '-') || 'target';
   const outDir = resolve(out || join('workspace', `quick-${name}`));
   const r = await runPipeline({ target: t, out: outDir, ...QUICK_PRESET, allowExec, now, log });
-  const brief = writeBrief(r, { target: t, allowExec });
+  // The picture is part of the result, not a second step: one self-contained HTML next to the brief.
+  let viewer = null;
+  if (render) { const { renderViewer } = await import('./render/index.mjs'); viewer = renderViewer({ auditDir: outDir, boundaryDir, out: join(outDir, 'viewer.html'), now }).outFile; }
+  const brief = writeBrief(r, { target: t, allowExec, viewer, outDir });
   writeFileSync(join(outDir, 'quick.md'), brief);
-  return { ...r, brief, outDir };
+  return { ...r, brief, outDir, viewer };
 }
 
-function writeBrief(r, { target, allowExec }) {
+/** Best-effort browser launch for --open. Never throws; a failure just means you open the file yourself. */
+export function openInBrowser(file) {
+  try {
+    const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', file]] : process.platform === 'darwin' ? ['open', [file]] : ['xdg-open', [file]];
+    const c = spawn(cmd, args, { stdio: 'ignore', detached: true, windowsVerbatimArguments: process.platform === 'win32' });
+    c.on('error', () => {}); c.unref();
+    return true;
+  } catch { return false; }
+}
+
+function writeBrief(r, { target, allowExec, viewer, outDir }) {
   const { model, plan, lattice, sequence, harness } = r;
   const notes = model.extraction.notes || [];
   const routes = enumerateRoutes(model).length;
@@ -66,7 +80,7 @@ function writeBrief(r, { target, allowExec }) {
   const steps = nextSteps({ model, notes, allowExec, target, harness });
   L.push('## Next steps (only the ones that apply)', '');
   steps.forEach((s, i) => L.push(`${i + 1}. ${s}`));
-  L.push('', `Full detail: summary.md and plan.json in this folder. To see it in 3D (risk field colour-mapped secure/efficient vs. insecure/inefficient): \`node bin/gm2.mjs render --in <this folder>\`.`, '');
+  L.push('', viewer ? 'Full detail: summary.md and plan.json in this folder. **Open viewer.html in a browser** to see the request space in 3D: green where the agent is secure and efficient, red where it bulges into insecure, blue into inefficient.' : 'Full detail: summary.md and plan.json in this folder. For the 3D picture: run the render command with this folder as its input.', '');
   return L.join('\n');
 }
 

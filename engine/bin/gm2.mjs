@@ -2,7 +2,7 @@
 /**
  * gm2 — Gristmill V2 command line.
  *
- *   gm2 quick   [--target <agent>] [--out <dir>] [--allow-exec]   # NO DECISIONS: dry, full offline mapping, low effort, plain brief
+ *   gm2 quick   [--target <agent>] [--out <dir>] [--allow-exec] [--open] [--no-render] [--boundary <dir>]   # NO DECISIONS: dry, full offline mapping, low effort, plain brief + 3D viewer
  *   gm2 audit   --target <module.mjs | francisco-dir> --out <dir> [--strength 2] [--budget 40] [--traces x.jsonl] [--now ISO]
  *   gm2 extract --target ... --out <dir>              # model.json + graph.json only
  *   gm2 analyze --target ... --out <dir>              # + structural findings
@@ -40,11 +40,13 @@ if (cmd === 'render') {
 // `quick` is the no-decisions default: dry, every offline mapping layer, low effort, plain-language
 // brief. --target is optional (defaults to the current directory when it looks like an agent).
 if (cmd === 'quick') {
-  const { runQuick } = await import('../lib/quick.mjs');
+  const { runQuick, openInBrowser } = await import('../lib/quick.mjs');
   try {
-    const r = await runQuick({ target: opt('target'), out: opt('out'), allowExec: has('allow-exec'), now: opt('now'), log: has('verbose') ? s => console.log('  ' + s) : () => {} });
+    const r = await runQuick({ target: opt('target'), out: opt('out'), allowExec: has('allow-exec'), render: !has('no-render'), boundaryDir: opt('boundary'), now: opt('now'), log: has('verbose') ? s => console.log('  ' + s) : () => {} });
+    const sep = process.platform === 'win32' ? '\\' : '/';
     console.log('\n' + r.brief);
-    console.log(`(written to ${r.outDir}${process.platform === 'win32' ? '\\' : '/'}quick.md)`);
+    console.log(`Brief:  ${r.outDir}${sep}quick.md`);
+    if (r.viewer) { console.log(`Viewer: ${r.viewer}${has('open') ? '   (opening in your browser)' : '   (open it in a browser, or rerun with --open)'}`); if (has('open')) openInBrowser(r.viewer); }
     process.exit(0);
   } catch (e) { console.error('\n' + e.message + '\n'); process.exit(2); }
 }
@@ -71,6 +73,8 @@ if (cmd === 'boundary') {
   const sequence = runSequenceEngine({ model, depth: +opt('depth', 5) });
   const r = await runBoundaryCampaign({ model, adapter, outDir: resolve(out), rounds: +opt('rounds', 2), budget: +opt('budget', 120), sequence, now: opt('now'), log: has('quiet') ? () => {} : s => console.log('  ' + s) });
   console.log(`\nwrote ${resolve(out)}: boundaries.json thresholds.json radius.json boundary_findings.jsonl threshold_baseline.json next_probes.json observations.jsonl`);
+  console.log(`\nSee these as 3D defense surfaces (a code gate is a flat floor, a prompt-only defense a cliff):`);
+  console.log(`  node bin/gm2.mjs render --in <your audit folder> --boundary ${resolve(out)} --out viewer.html`);
   console.log(`\nDefense shapes:`);
   for (const b of r.boundaries.filter(b => b.sensitive)) console.log(`  ${b.tool}: ${b.class}${b.min_pressure_to_break != null ? ` (breaks at pressure ${b.min_pressure_to_break})` : ''}`);
   for (const f of r.findings.slice(0, 6)) console.log(`  [${f.rule} sev${f.severity}] ${f.summary.slice(0, 100)}`);
@@ -89,7 +93,7 @@ const STAGES = {
 };
 
 if (!cmd || !(cmd in STAGES) || has('help')) {
-  console.log(`usage: gm2 quick [--target <agent>]          (start here: no decisions, dry, plain-language result)
+  console.log(`usage: gm2 quick [--target <agent>] [--open]   (start here: no decisions, dry, brief + 3D viewer)
        gm2 <${Object.keys(STAGES).join('|')}> --target <path> --out <dir> [--kind module|francisco] [--strength N] [--budget N] [--traces file.jsonl] [--now ISO] [--full-if-at-most N] [--quiet]`);
   process.exit(cmd ? 1 : 0);
 }

@@ -74,8 +74,11 @@ Two zero-decision options. Both are dry: nothing runs against your agent's real 
   git clone --depth 1 https://github.com/TH-Project-Files/Project-Gristmill.git
   node Project-Gristmill/engine/bin/gm2.mjs quick --target /path/to/your/agent
   ```
-  In seconds you get a short brief: what it looked at, what to fix first, how much to trust it,
-  and the next steps that apply. No model, no tokens, no credentials.
+  In seconds you get a short brief (what it looked at, what to fix first, how much to trust it,
+  and the next steps that apply) **and a 3D picture, `viewer.html`**, of your agent's request space:
+  green where it is secure and efficient, red where it bulges into insecure, blue into inefficient.
+  Add `--open` to launch it in your browser. No model, no tokens, no credentials. Don't have an
+  agent handy? `cd Project-Gristmill/engine && npm run demo` runs it on a built-in example.
 - **The prompt below, answering "quick"** when it asks its questions. It asks only which agent to
   audit, then runs a short dry campaign with safe defaults and the same brief at the end.
 
@@ -118,7 +121,8 @@ Load, in this order:
   • playbooks/RUN_A_CAMPAIGN.md, THE_GRIND.md, SANDBOXING.md
   • safety/blast-radius-guard.mjs, safety/safe-execute.mjs   (the non-bypassable live-run guard)
   • seed-imports/PROVIDER_IMPORT_CONTRACT.md
-  • engine/README.md, engine/docs/EXPORTING_A_TARGET.md   (the deterministic engine; optional)
+  • engine/README.md, engine/docs/EXPORTING_A_TARGET.md, engine/docs/PORTABLE_RUNNER.md
+    (the deterministic engine; optional)
 If any fetch fails, retry once, then tell me and offer to proceed from a local clone instead.
 ENGINE CHECK (optional, never blocking): if you can run shell commands AND `node --version` reports
 20 or newer, the engine is AVAILABLE — use a local clone of this repo, or clone it
@@ -313,13 +317,15 @@ HONESTLY and CAP IT MECHANICALLY: if the stopping rule did not fire or judge agr
 0.8, the ceiling is "directional" (and never claim "significant" without repeated trials).
 Finally, present me the ranked, Skeptic-gated plan with its honest confidence label, and
 offer to (i) hand the plan to an implementer and (ii) re-run the regression pack after fixes land.
-If the engine ran, also render the picture and give me its path:
+If the engine ran, give me the picture's path. On the QUICK PATH `gm2 quick` already wrote
+<...>/engine/viewer.html; otherwise (or after a boundary run, to add measured data) render it:
      node bin/gm2.mjs render --in <workspace>/<campaign_id>/engine [--boundary <...>/engine/boundary]
 It is one self-contained HTML file (opens from disk): the request space colour-mapped green where
 secure and efficient, red where it bulges into insecure, blue into inefficient; defense surfaces
-where a boundary run exists; the wiring; the lit multi-step paths. Say which view to open first
-based on the top finding (a BND/JOIN finding → defense surface for that tool; a SEQ finding →
-state space; otherwise the risk field).
+where a boundary run exists; the wiring; the lit multi-step paths. Tell me which view to open first
+based on the top finding (a BND or JOIN finding: the defense surface for that tool; a SEQ finding:
+the state space; otherwise the risk field), and that the risk field shows predictions while only
+the defense surfaces reflect measured behaviour.
 
 INVARIANTS you must never break: never repeat a scenario (the gate is computed, not judged);
 never overwrite append-only memory; never inflate a datum's fidelity; a prediction is never
