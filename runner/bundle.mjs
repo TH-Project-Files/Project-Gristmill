@@ -26,7 +26,7 @@ import path from 'node:path';
 import { validateValue } from './validate.mjs';
 
 const KIT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const MEMORY_READ_BY_RUNNER = ['scenario_fingerprints.jsonl', 'score_timeseries.jsonl', 'long_term_findings.jsonl'];
+const MEMORY_READ_BY_RUNNER = ['scenario_fingerprints.jsonl', 'score_timeseries.jsonl', 'long_term_findings.jsonl', 'engine_findings.jsonl'];
 const RUBRICS = ['axes.md', 'fidelity-ladder.md', 'statistics.md'];
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -46,6 +46,9 @@ export function memorySeed(campaignDir, campaignId) {
     const p = path.join(campaignDir, 'memory', f);
     if (existsSync(p)) seed[`workspace/${campaignId}/memory/${f}`] = readFileSync(p, 'utf8');
   }
+  // The engine pre-pass output (Phase 3e) — the runner ingests its findings at their own fidelity.
+  const eng = path.join(campaignDir, 'engine', 'findings.jsonl');
+  if (existsSync(eng)) seed[`workspace/${campaignId}/engine/findings.jsonl`] = readFileSync(eng, 'utf8');
   return seed;
 }
 

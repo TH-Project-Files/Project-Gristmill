@@ -24,8 +24,12 @@ While the package runs — at import, inside `createTools()`, and in every handl
 global `fetch` is refused (during load) or routed to the recording fakes (in handlers), and
 `process.env` is swapped for a scrubbed copy, so code that reads the host environment directly sees
 no API key or cloud credential. Refused network attempts are listed in the extraction notes. Network
-that bypasses global `fetch` is still not intercepted; the hidden environment is what stops such a
-call from authenticating.
+that bypasses global `fetch` is refused at the socket: `net.Socket#connect`, `tls.connect` and the
+DNS resolvers are patched while package code runs, so a database driver, Redis client, LDAP or SMB
+library cannot reach a real backend even though it never touches `fetch`. Refused connections are
+listed in the extraction notes. A handler that depends on such a backend stops at that call; to get
+past it, stub the client (path B). The hidden environment is the second line: even an escaped call
+would carry no real credential.
 
 Use B when `createTools()` throws on load because it reaches for a database, a registry or a
 client — stub those, then bind.

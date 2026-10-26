@@ -2,6 +2,7 @@
 /**
  * gm2 — Gristmill V2 command line.
  *
+ *   gm2 feasibility --target <agent> [--json]   # evidence ceiling per posture + unlock commands, no model turns
  *   gm2 quick   [--target <agent>] [--out <dir>] [--allow-exec] [--open] [--no-render] [--boundary <dir>]   # NO DECISIONS: dry, full offline mapping, low effort, plain brief + 3D viewer
  *   gm2 audit   --target <module.mjs | francisco-dir> --out <dir> [--strength 2] [--budget 40] [--traces x.jsonl] [--now ISO]
  *   gm2 extract --target ... --out <dir>              # model.json + graph.json only
@@ -35,6 +36,15 @@ if (cmd === 'render') {
     console.log(`  wiring: ${v.wiring.available ? v.wiring.nodes.length + ' nodes' : 'none'} · state space: ${v.states.available ? v.states.nodes.length + ' states' : 'none — ' + v.states.reason} · request cloud: ${v.cloud.available ? v.cloud.points.length + ' cells' : 'none'}`);
     process.exit(0);
   } catch (e) { console.error('\n' + e.message + '\n'); process.exit(2); }
+}
+
+// `feasibility` answers, before any model turn is spent, what fidelity a target can reach per posture.
+if (cmd === 'feasibility') {
+  const t = opt('target'); if (!t) { console.error('usage: gm2 feasibility --target <agent>'); process.exit(2); }
+  const { feasibility, feasibilityMarkdown } = await import('../lib/feasibility.mjs');
+  const f = feasibility(t, { allowExec: has('allow-exec') });
+  console.log(has('json') ? JSON.stringify(f, null, 2) : feasibilityMarkdown(f));
+  process.exit(0);
 }
 
 // `quick` is the no-decisions default: dry, every offline mapping layer, low effort, plain-language

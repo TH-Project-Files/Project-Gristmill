@@ -1,0 +1,41 @@
+{
+  "name": "gristmill",
+  "version": "2.2.0",
+  "description": "Gristmill: a closed-loop methodology plus a no-dependency engine for polishing agentic systems — dry security and efficiency audits, multi-step model checking, measured defense shapes, and a 3D risk-mapped viewer.",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "gm2": "engine/bin/gm2.mjs",
+    "gristmill": "engine/bin/gm2.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "npm run test:engine && npm run test:runner",
+    "quick": "node engine/bin/gm2.mjs quick",
+    "demo": "node engine/bin/gm2.mjs quick --target engine/fixtures/example-agent/agent.mjs --out engine/workspace/demo --open",
+    "test:engine": "cd engine && node --test test/*.test.mjs",
+    "test:runner": "node --test runner/test/*.test.mjs"
+  },
+  "files": [
+    "engine",
+    "runner",
+    "safety",
+    "schemas",
+    "roles",
+    "modes",
+    "rubrics",
+    "adapters",
+    "playbooks",
+    "seed-imports",
+    "METHODOLOGY.md",
+    "README.md",
+    "license.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TH-Project-Files/Project-Gristmill.git"
+  }
+}

@@ -491,6 +491,34 @@ function conform(schema, data) {
 
 const arr = (x) => (Array.isArray(x) ? x.filter(v => v !== null && v !== undefined).map(String) : []);
 const slugify = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'none';
+
+/** Map one engine finding (engine/schemas/finding.schema.json) onto the runner's finding contract. */
+const ENGINE_ISSUE = {
+  'SEC-01': 'security-hardening-gap', 'SEC-02': 'security-hardening-gap', 'SEC-03': 'security-hardening-gap', 'SEC-04': 'security-hardening-gap', 'SEC-05': 'security-hardening-gap', 'SEC-06': 'security-hardening-gap', 'SEC-07': 'security-hardening-gap', 'SEC-08': 'security-hardening-gap', 'SEC-09': 'prompt-injection-susceptibility', 'SEC-10': 'security-hardening-gap', 'SEC-11': 'security-hardening-gap',
+  'EFF-01': 'insufficient-stop-condition', 'EFF-02': 'insufficient-stop-condition', 'EFF-03': 'weak-tool-contract', 'EFF-04': 'routing-defect', 'EFF-05': 'cost-explosion', 'EFF-06': 'cost-explosion', 'EFF-07': 'weak-tool-contract', 'EFF-08': 'routing-defect',
+  'HAR-SINK': 'weak-tool-contract', 'HAR-ENV': 'weak-tool-contract', 'HAR-SECRET': 'security-hardening-gap', 'HAR-RAWERR': 'security-hardening-gap', 'HAR-TAINT': 'security-hardening-gap', 'HAR-SCHEMA': 'weak-tool-contract', 'HAR-LIMIT': 'cost-explosion', 'HAR-SCOPE': 'security-hardening-gap',
+  'SEQ-01': 'prompt-injection-susceptibility', 'SEQ-02': 'security-hardening-gap', 'SEQ-03': 'security-hardening-gap', 'SEQ-04': 'prompt-injection-susceptibility', 'SEQ-05': 'insufficient-stop-condition', 'SEQ-06': 'routing-defect',
+  'BND-01': 'security-hardening-gap', 'BND-02': 'security-hardening-gap', 'BND-03': 'security-hardening-gap', 'BND-04': 'instruction-following-failure', 'BND-05': 'confidence-provenance', 'JOIN-01': 'prompt-injection-susceptibility',
+};
+function engineFindingToRunner(e) {
+  if (!e || !e.finding_id || !e.rule) return null;
+  const fidelity = ['L0', 'L1', 'L2', 'L3'].includes(e.fidelity) ? e.fidelity : 'L0';
+  const verify = fidelity === 'L0' ? 'UNCERTAIN' : (['CONFIRMED', 'UNCERTAIN', 'REFUTED'].includes(e.verify_status) ? e.verify_status : 'UNCERTAIN');
+  const prefix = String(e.rule).replace(/-\d+$/, '');
+  const mode = { security: 'security', efficiency: 'efficiency', 'model-drift': 'behavioral-hardening' }[e.mode] || 'security';
+  // Conforms to schemas/finding.schema.json (additionalProperties: false); the engine rule and
+  // subject travel in evidence_ref so the Analyst and Skeptic can see where the fact came from.
+  return {
+    id: `eng-${e.finding_id}`, scenario_id: 'engine', mode, summary: String(e.summary || e.rule),
+    failure_scenario: `engine ${e.rule}${e.subject?.tool ? ' on ' + e.subject.tool : ''}: ${String(e.summary || '')}`,
+    issue_class: ENGINE_ISSUE[e.rule] || ENGINE_ISSUE[prefix] || 'other',
+    cluster_hint: (e.fix_candidates && e.fix_candidates[0]) || `engine.${e.rule}`,
+    severity: clamp(Math.round(Number(e.severity) || 3), 1, 5),
+    prevalence_est: fidelity === 'L0' ? 0.3 : 0.6, improvement_leverage: 0.6, reproducibility: fidelity === 'L0' ? 0.5 : 1,
+    regression_risk_if_fixed_poorly: 2, prompt_only_fix_plausible: /^(EFF|BND-04)/.test(e.rule),
+    fidelity, verify_status: verify, evidence_ref: `engine:${e.rule}:${e.subject?.tool || e.subject?.route || 'model'}`,
+  };
+}
 const intOr = (x, d) => (Number.isFinite(+x) ? Math.max(0, Math.round(+x)) : d);
 const numIn = (x, lo, hi, d) => (Number.isFinite(+x) ? clamp(+x, lo, hi) : d);
 const round2 = (x) => Math.round(x * 100) / 100;
@@ -1063,6 +1091,19 @@ async function runCampaign({ config, engine, adapter, io, kitDir = '', now = '20
 
   const runsById = new Map(); // scenario_id -> { scenario, trace, panel, consensus, agreement, blindDelta, findings, promotedL2 }
   const allFindingsNow = () => [...runsById.values()].flatMap(r => r.findings);
+  const scenarioRuns = () => [...runsById.values()].filter(r => !r.engine).length; // prevalence denominator: scenarios only
+
+  // Engine evidence: the Phase-3 pre-pass writes `gm2 audit` output to <campaign>/engine/, whose
+  // findings.jsonl holds structural L0 facts and, where handlers ran, L1 harness results. They
+  // enter the SAME pool the clusters are built from, keeping the fidelity the engine stamped — so
+  // a cluster the judges only predicted can be confirmed by executed evidence, and an L1 engine
+  // finding never has to wait for a judge. (memory/engine_findings.jsonl is an explicit copy.)
+  const engPath = [pj(campDir, 'engine', 'findings.jsonl'), pj(memDir, 'engine_findings.jsonl')].find(p => io.exists(p));
+  const engineFindings = engPath ? readLines(engPath).map(engineFindingToRunner).filter(Boolean) : [];
+  if (engineFindings.length) {
+    runsById.set('engine', { scenario: { scenario_id: 'engine', mode: 'engine', fingerprint: { coverage_cell: 'engine|structural|n/a' } }, trace: { fidelity: 'L1' }, panel: [], consensus: null, agreement: 1, blindDelta: 0, findings: engineFindings, promotedL2: false, engine: true });
+    log(`engine: ${engineFindings.length} findings ingested (${engineFindings.filter(f => f.fidelity !== 'L0').length} at L1+)`);
+  }
   let clusters = [];
   let dryStreak = 0;
   const seenClusterIds = new Set();
@@ -1271,7 +1312,7 @@ async function runCampaign({ config, engine, adapter, io, kitDir = '', now = '20
     const roundFindings = [];
     for (const run of roundRuns) for (const f of run.findings) { appendJsonl('long_term_findings.jsonl', f); roundFindings.push(f); }
 
-    clusters = await engine.cluster(allFindingsNow(), clusters, round, { scenarioCount: runsById.size });
+    clusters = await engine.cluster(allFindingsNow(), clusters, round, { scenarioCount: scenarioRuns() });
     writeJson(memDir, 'issue_clusters.json', clusters);
     writeCoverage(round);
 
@@ -1320,7 +1361,7 @@ async function runCampaign({ config, engine, adapter, io, kitDir = '', now = '20
       }
     }
     if (loopback.promoted) {
-      clusters = await engine.cluster(allFindingsNow(), clusters, round, { scenarioCount: runsById.size });
+      clusters = await engine.cluster(allFindingsNow(), clusters, round, { scenarioCount: scenarioRuns() });
       writeJson(memDir, 'issue_clusters.json', clusters);
       writeCoverage(round);
       plan = await engine.skeptic(await engine.plan(config.campaign_id, profile.target_name, clusters, now, planCtx()), clusters, planCtx());

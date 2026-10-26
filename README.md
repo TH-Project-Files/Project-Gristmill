@@ -79,6 +79,10 @@ Two zero-decision options. Both are dry: nothing runs against your agent's real 
   green where it is secure and efficient, red where it bulges into insecure, blue into inefficient.
   Add `--open` to launch it in your browser. No model, no tokens, no credentials. Don't have an
   agent handy? `cd Project-Gristmill/engine && npm run demo` runs it on a built-in example.
+  Without cloning: `npx github:TH-Project-Files/Project-Gristmill quick --target /path/to/your/agent`.
+  Inside a Claude Code session opened on this repo, `/gristmill quick <path>` does the same and
+  `/gristmill <path>` runs the full campaign; `CLAUDE.md` and `AGENTS.md` carry the operating rules
+  for any coding agent, so a Codex or Antigravity session gets them too.
 - **The prompt below, answering "quick"** when it asks its questions. It asks only which agent to
   audit, then runs a short dry campaign with safe defaults and the same brief at the end.
 
@@ -196,6 +200,13 @@ final report, end with the brief's "Next steps" so I know how to go further if I
      only — 0.25 execute-sample]
   6. SEED IMPORTS — Any external scenario sets (other models' adversarial questions) or historic
      incidents/tickets to blend in? I'll normalize + curate them per the import contract. [none]
+EVIDENCE CEILING (engine available). As soon as the target is known, run
+  node bin/gm2.mjs feasibility --target <ENGINE TARGET>
+and show me its table. If the ceiling for the posture I chose is L0, say in one line that LLM rounds
+on this target can only produce UNCERTAIN findings (0 confirmed by construction) and recommend the
+unlock it printed (sandboxed execution, a stubbing describe.mjs, or handoff boundary measurement)
+BEFORE any round runs. Do not start Phase 4 rounds on an L0 ceiling unless I reply "predictions
+only" — and then cap the campaign at 1 round.
 After I answer, assemble a run-config that validates against run-config.schema.json. Derive the
 fidelity block FROM THE POSTURE: posture A ⇒ default_level "L0", real_execution_sample_rate 0;
 posture B ⇒ default_level "L0", real_execution_sample_rate as set, ceiling L2, sample_strategy
@@ -227,6 +238,9 @@ PHASE 3 — WORKSPACE & DOCUMENT CREATION
          STRUCTURAL facts about the wiring ("reachable and ungated"), not observed behaviour.
        • Keep engine/open_world_plan.json and engine/sequence_scripts.json for Phase 4: they are
          the engine's ranked list of which requests and multi-turn sequences are worth a real run.
+       • Leave engine/findings.jsonl where it is: the campaign runner ingests it automatically
+         into the cluster pool at the fidelity the engine stamped (L0 facts stay UNCERTAIN; L1
+         harness results count as confirmed members without waiting for a judge).
      If the command fails, show me the error once and continue without the engine.
 
 ────────────────────────────────────────────────────────────────────────

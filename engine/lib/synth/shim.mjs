@@ -16,6 +16,9 @@
  * HTTP client) is NOT intercepted. That is why the env holds canaries only: an escaped call cannot
  * authenticate with a real secret. Run L1 binding on a machine with no real credentials in reach.
  */
+import net from 'node:net';
+import tls from 'node:tls';
+import dns from 'node:dns';
 
 /**
  * Host variables a JS package or a child process may legitimately need that carry no secret.
@@ -43,7 +46,27 @@ export async function withSandbox(fn, { ctxFetch = null, blocked = null } = {}) 
     return new Response(body, { status: r.status ?? 200, headers: { 'content-type': 'application/json' } });
   };
   process.env = scrubbedEnv(originalEnv);
-  try { return await fn(); } finally { globalThis.fetch = originalFetch; process.env = originalEnv; }
+  // Raw sockets are the hole `fetch` interception leaves open: database drivers, Redis clients,
+  // LDAP, SMB and vendored HTTP libraries all open their own TCP/TLS connections. While package
+  // code runs, every outbound connect is refused and recorded, so a handler cannot reach a real
+  // backend even when it bypasses fetch entirely. (Same-process servers are unaffected.)
+  const restoreNet = blockSockets(blocked);
+  try { return await fn(); } finally { restoreNet(); globalThis.fetch = originalFetch; process.env = originalEnv; }
+}
+
+function blockSockets(blocked) {
+  const refuse = (what) => { if (blocked) blocked.push(what); const e = new Error(`gristmill sandbox: outbound connection refused (${what})`); e.code = 'GRISTMILL_SANDBOX'; return e; };
+  const patches = [];
+  const patch = (obj, key, impl) => { if (!obj || typeof obj[key] !== 'function') return; const orig = obj[key]; obj[key] = impl(orig); patches.push(() => { obj[key] = orig; }); };
+  const describeTarget = (args) => { const a = args[0]; if (a && typeof a === 'object') return `${a.host || a.path || '?'}:${a.port || ''}`; return `${a}:${typeof args[1] === 'number' || typeof args[1] === 'string' ? args[1] : ''}`; };
+  // net.Socket.prototype.connect is the choke point for net.connect/createConnection and every
+  // client built on them; tls.connect and the dns resolvers are patched for drivers that go around it.
+  patch(net.Socket.prototype, 'connect', () => function (...args) { const err = refuse('tcp ' + describeTarget(args)); process.nextTick(() => this.emit('error', err)); return this; });
+  patch(tls, 'connect', () => function (...args) { throw refuse('tls ' + describeTarget(args)); });
+  patch(dns, 'lookup', () => function (host, ...rest) { const cb = rest.find(x => typeof x === 'function'); const err = refuse('dns ' + host); if (cb) { process.nextTick(() => cb(err)); return; } throw err; });
+  patch(dns.promises, 'lookup', () => async function (host) { throw refuse('dns ' + host); });
+  patch(dns.promises, 'resolve', () => async function (host) { throw refuse('dns ' + host); });
+  return () => { for (const undo of patches.reverse()) undo(); };
 }
 
 /** Back-compat name: route global fetch through the recording fake (now also hides host env). */

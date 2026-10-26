@@ -17,6 +17,7 @@ import { spawn } from 'node:child_process';
 import { resolve, join, basename } from 'node:path';
 import { runPipeline } from './pipeline.mjs';
 import { enumerateRoutes } from './model.mjs';
+import { feasibility, feasibilityMarkdown } from './feasibility.mjs';
 
 export const QUICK_PRESET = { strength: 2, depth: 4, budget: 20, fullIfAtMost: 2000, allowExec: false };
 
@@ -74,6 +75,7 @@ function writeBrief(r, { target, allowExec, viewer, outDir }) {
   for (const g of tasks) L.push(`${g.order}. **${g.group_id}** — ${g.description} *(closes ${g.closes_findings} finding${g.closes_findings === 1 ? '' : 's'}, lowest evidence ${g.min_fidelity})*`);
   L.push('');
 
+  L.push(feasibilityMarkdown(feasibility(target, { allowExec })));
   L.push('## How much to trust it', '');
   L.push(`Confidence: **${plan.evidence_confidence}**. Findings at L0 are facts about the wiring ("this action is reachable without a gate"), not observations of what the model does. L1 findings ran real handler code.`, '');
 

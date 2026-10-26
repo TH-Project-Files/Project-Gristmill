@@ -324,3 +324,31 @@ test('bundle -> workflow (in memory) -> replay (to disk) round trip reproduces t
     rmSync(tdir, { recursive: true, force: true });
   }
 });
+
+test('engine pre-pass findings enter the cluster pool at their own fidelity, schema-valid, and never count as scenarios', async () => {
+  const engineRows = [
+    { finding_id: 'SEC-02-aaaa', rule: 'SEC-02', mode: 'security', severity: 5, fidelity: 'L0', verify_status: 'UNCERTAIN', summary: 'reset_device reachable ungated via ops', subject: { tool: 'reset_device' }, fix_candidates: ['gate:consent@reset_device'] },
+    { finding_id: 'HAR-SECRET-bbbb', rule: 'HAR-SECRET', mode: 'security', severity: 5, fidelity: 'L1', verify_status: 'CONFIRMED', summary: 'API_KEY canary appeared in output', subject: { tool: 'lookup' }, fix_candidates: ['redact:lookup'] },
+    { garbage: true },
+  ];
+  const calls = [];
+  const io = core.memoryIo({ 'workspace/test-campaign/engine/findings.jsonl': engineRows.map(r => JSON.stringify(r)).join('\n') + '\n' });
+  const config = CONFIG('test-campaign');
+  // A CONFIRMED L1 engine fact lets a plan item through the evidence gate, so (unlike the all-L0
+  // fake) the Regression Warden IS called here: answer it with an empty pack.
+  const base = fakeAgent(calls);
+  const agent = async (prompt, opts) => /\[gm-call:regression/.test(prompt) ? (calls.push({ tag: 'regression', prompt }), { members: [], watchlist: [] }) : base(prompt, opts);
+  const engine = core.workflowEngine({ agent, texts: kitTexts(config.evaluation_modes), schemas: kitSchemas(), config });
+  const res = await core.runCampaign({ config, engine, adapter: core.dataAdapter(ADAPTER), io, kitDir: '', now: NOW });
+  const clusters = JSON.parse(io.read('workspace/test-campaign/memory/issue_clusters.json'));
+  const members = new Set(clusters.flatMap(c => c.member_findings));
+  assert.ok(members.has('eng-SEC-02-aaaa') && members.has('eng-HAR-SECRET-bbbb'), 'both engine findings are clustered');
+  const l1 = clusters.find(c => c.member_findings.includes('eng-HAR-SECRET-bbbb'));
+  assert.ok(l1.aggregate.confirmed_members >= 1, 'the L1 engine fact counts as confirmed without a judge');
+  const clusterPrompt = calls.find(c => c.tag.startsWith('cluster')).prompt;
+  assert.ok(clusterPrompt.includes('"eng-HAR-SECRET-bbbb"') && clusterPrompt.includes('"evidence_ref": "engine:HAR-SECRET:lookup"') === false, 'the Analyst sees the engine finding (compact form)');
+  const sent = clusterPrompt.slice(clusterPrompt.indexOf('=== FINDINGS ===') + 17).split('\n=== ')[0];
+  for (const f of JSON.parse(sent).filter(f => f.scenario_id === 'engine')) assert.deepEqual(validateValue('finding.schema.json', { ...f, prevalence_est: 0.3, improvement_leverage: 0.6 }), [], f.id);
+  const cov = JSON.parse(io.read(`${res.runDir}/coverage_matrix.json`));
+  assert.ok(!cov.cells.some(c => /engine/.test(c.cell)), 'the engine is not a coverage cell');
+});
