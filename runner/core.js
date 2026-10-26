@@ -614,10 +614,11 @@ function workflowEngine({ agent, texts, schemas, config }) {
   const J = (x) => JSON.stringify(x, null, 1);
   const phaseOf = (round) => (round ? `Round ${round}` : 'Characterize');
 
-  const preamble = (roleFile, focus) => [
+  const NO_TOOLS = 'You are an independent context. Use NO tools: do not read, search or write files and do not run commands. Everything you need is below. Return only the structured output.';
+  const preamble = (roleFile, focus, toolsRule = NO_TOOLS) => [
     `You are one role in a Gristmill agent-polishing campaign. Target: ${state.profile ? state.profile.target_name : '(being characterized)'}.`,
     'Posture: DRY. Nothing is executed against the target. You work only from its description and the evidence quoted in this prompt.',
-    'You are an independent context. Use NO tools: do not read, search or write files and do not run commands. Everything you need is below. Return only the structured output.',
+    toolsRule,
     focus ? `\nYOUR TASK NOW: ${focus}` : '',
     '', `=== ROLE (${roleFile}) ===`, texts.roles[roleFile],
   ].join('\n');
@@ -875,8 +876,15 @@ function workflowEngine({ agent, texts, schemas, config }) {
     async verifyMany(findings, { scenario, trace }) {
       if (!findings.length) return findings;
       const round = scenario.fingerprint && scenario.fingerprint.created_round;
+      // Code access (adapter opt-in): the refuter may READ the pinned checkout to test premises.
+      // Judges never get it (blind judges must stay blind); only this refuting role does.
+      const access = state.adapter && state.adapter.codeAccess ? state.adapter.codeAccess() : null;
+      const toolsRule = access
+        ? `You are an independent context. You MAY read the target's source, read-only, to test each finding's premises: the checkout at ${access.root} is pinned at commit ${access.sha}. Use only Read, Grep and Glob. Do not run commands, do not execute or import target code, and do not modify any file. Return only the structured output.`
+        : undefined;
       const prompt = [
-        preamble('04-trace-judge.md', `Verify mode, on other judges' findings for scenario ${scenario.scenario_id}. Try to REFUTE each one.`),
+        preamble('04-trace-judge.md', `Verify mode, on other judges' findings for scenario ${scenario.scenario_id}. Try to REFUTE each one.`, toolsRule),
+        access ? 'Most findings rest on a premise about the code (what the runtime injects or allows, what a guard matches, what a prompt or skill says). Check that premise in the source FIRST. If the source contradicts it, the finding is REFUTED: quote the file and line in your justification. A premise you confirm in source is a fact about the code, not about the agent\'s behaviour, so the ceiling below still holds.' : '',
         '', `The trace is ${trace.fidelity}. ${trace.fidelity === 'L0' ? 'A prediction can never confirm a prediction: your ceiling is UNCERTAIN. Use REFUTED when the finding depends on a reading the target evidence (prompt, tools, gates, executed probes) does not support, or a benign explanation exists.' : 'CONFIRMED only if you can point to the exact step or text in the executed evidence.'}`,
         'When in doubt between CONFIRMED and UNCERTAIN, choose UNCERTAIN. For UNCERTAIN, say what execution would settle it.',
         '', rubric('fidelity-ladder.md'),
@@ -885,7 +893,7 @@ function workflowEngine({ agent, texts, schemas, config }) {
         '', `=== TRACE (${trace.fidelity}) ===`, J(trace),
         '', '=== FINDINGS TO VERIFY ===', J(findings.map(f => ({ id: f.id, summary: f.summary, failure_scenario: f.failure_scenario, issue_class: f.issue_class, severity: f.severity, fidelity: f.fidelity }))),
       ].join('\n');
-      const out = await call(`verify:${scenario.scenario_id}:${trace.fidelity}`, prompt, { phase: phaseOf(round), schema: verifySchema });
+      const out = await call(`verify:${scenario.scenario_id}:${trace.fidelity}`, prompt, { phase: phaseOf(round), schema: verifySchema, ...(access ? { agentType: 'Explore' } : {}) });
       const byId = new Map(((out && out.verdicts) || []).map(v => [v.id, v]));
       return findings.map(f => {
         const v = byId.get(f.id);
@@ -1040,6 +1048,7 @@ function dataAdapter(data) {
     describe() { return data.model; },
     targetProfile() { return JSON.parse(JSON.stringify(data.target_profile)); },
     evidence() { return { blocks: data.blocks || [], probes: data.probes || [] }; },
+    codeAccess() { return data.code_access && data.code_access.root ? { ...data.code_access } : null; },
   };
 }
 

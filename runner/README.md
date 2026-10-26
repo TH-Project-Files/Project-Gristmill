@@ -97,7 +97,7 @@ Each role is one subagent per call, with its `roles/NN-*.md` prompt and a schema
 | generate | `roles/02-scenario-smith.md` | 1 per mode per round (the mode's whole allocation) | ids, `normalized_text`, `coverage_cell`, `created_round`, the similarity gate |
 | run | `roles/03-run-simulator.md` | 1 per scenario | `fidelity` (L0 unless the adapter executed a mechanism), `cost.estimated`, enum filtering |
 | score | `roles/04-trace-judge.md` | `judge_panel_size` per scenario, concurrent; blind ones get redacted inputs | `overall`, `pass`, `sub_scores`, finding ids/fidelity/`verify_status`, panel merge |
-| verify | `roles/04` (Verify mode) | 1 per scenario with findings, a separate context told to refute | the L0 cap (CONFIRMED -> UNCERTAIN) |
+| verify | `roles/04` (Verify mode) | 1 per scenario with findings, a separate context told to refute; with adapter `code_access` it runs as a read-only `Explore` agent that checks premises in the pinned checkout | the L0 cap (CONFIRMED -> UNCERTAIN) |
 | cluster | `roles/05-root-cause-analyst.md` | 1 per round | every aggregate, `rank_score`, stability; unplaced findings still clustered |
 | plan | `roles/06-remediation-planner.md` | 1 | priority, unknown regression ids dropped, unaddressed clusters deferred with a reason |
 | skeptic | `roles/07-skeptic.md` | 1 | `accepted` without a CONFIRMED L1+ member -> `needs-more-evidence`; confidence ceiling |

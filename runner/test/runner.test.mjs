@@ -223,6 +223,24 @@ test('workflow engine: blind judges never see the hypothesis or its derivations'
   assert.ok(sighted.every(c => c.prompt.includes('"expected_ideal_path"')));
 });
 
+test('code access goes to the refuting verifier only, read-only, never to judges', async () => {
+  const seen = [];
+  const inner = fakeAgent([]);
+  const agent = async (prompt, opts) => { seen.push({ kind: opts.label.split(':')[0], agentType: opts.agentType, prompt }); return inner(prompt, opts); };
+  const config = CONFIG('test-access');
+  const adapter = core.dataAdapter({ ...ADAPTER, code_access: { root: 'C:/repo', sha: 'abc123' } });
+  const engine = core.workflowEngine({ agent, texts: kitTexts(config.evaluation_modes), schemas: kitSchemas(), config });
+  await core.runCampaign({ config, engine, adapter, io: core.memoryIo({}), kitDir: '', now: NOW });
+  const verify = seen.filter(s => s.kind === 'verify');
+  assert.ok(verify.length && verify.every(s => s.agentType === 'Explore' && s.prompt.includes('pinned at commit abc123') && !s.prompt.includes('Use NO tools')));
+  assert.ok(seen.filter(s => s.kind !== 'verify').every(s => s.agentType === undefined && s.prompt.includes('Use NO tools')));
+  // Without code access the verifier is tool-less like everyone else.
+  const seen2 = [];
+  const agent2 = async (prompt, opts) => { seen2.push(opts); return inner(prompt, opts); };
+  await core.runCampaign({ config, engine: core.workflowEngine({ agent: agent2, texts: kitTexts(config.evaluation_modes), schemas: kitSchemas(), config }), adapter: core.dataAdapter(ADAPTER), io: core.memoryIo({}), kitDir: '', now: NOW });
+  assert.ok(seen2.every(o => o.agentType === undefined));
+});
+
 test('workflow engine refuses to execute the target', async () => {
   const config = CONFIG();
   const engine = core.workflowEngine({ agent: fakeAgent([]), texts: kitTexts(config.evaluation_modes), schemas: kitSchemas(), config });
