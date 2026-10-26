@@ -69,11 +69,19 @@ export function readCalls(transcriptDir) {
   let duplicates = 0;
   for (const f of readdirSync(transcriptDir).filter(f => /^agent-.*\.jsonl$/.test(f))) {
     const agentId = f.slice('agent-'.length, -'.jsonl'.length);
-    const first = readFileSync(path.join(transcriptDir, f), 'utf8').split('\n').find(Boolean);
-    if (!first) continue;
-    // The Workflow runtime prepends its own provenance preamble (~425 chars) and indents the
-    // computed task, so the tag is the FIRST match near the top, not at column 0.
-    const m = TAG_RE.exec(firstPromptText(first).slice(0, 4000));
+    // The computed task is not always the first record: newer runtimes first relay the user's
+    // request (and the assistant message it replied to) as its own user turn, then send the task.
+    // Within the task record the runtime prepends a provenance preamble (~425 chars) and indents
+    // the text, so the tag is the FIRST match near the top of the first user record that has one.
+    const lines = readFileSync(path.join(transcriptDir, f), 'utf8').split('\n').filter(Boolean).slice(0, 12);
+    let m = null;
+    for (const line of lines) {
+      let rec;
+      try { rec = JSON.parse(line); } catch { continue; }
+      if (rec.type !== 'user') continue;
+      m = TAG_RE.exec(firstPromptText(line).slice(0, 4000));
+      if (m) break;
+    }
     if (!m) { untagged.push(agentId); continue; }
     const at = order.has(agentId) ? order.get(agentId) : -1;
     const cur = best.get(m[1]);

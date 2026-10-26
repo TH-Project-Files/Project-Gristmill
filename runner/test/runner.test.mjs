@@ -281,17 +281,24 @@ test('readCalls: on a resumed run the latest result for a tag wins; an unfinishe
     agent('a1', 'judge:x:L0:j0s'); agent('a2', 'judge:x:L0:j0s'); // original, then live re-run after resume
     agent('a3', 'sim:y');       agent('a4', 'sim:y');           // original finished; re-run killed in flight
     agent('a5', 'verify:z');                                    // killed in flight, never re-run
+    // Newer runtimes relay the user's request as the first user record, then send the task.
+    writeFileSync(path.join(d, 'agent-a6.jsonl'), [
+      { type: 'user', message: { role: 'user', content: '[Workflow harness — user request] relayed:\n  can we run it on haiku?' } },
+      { type: 'user', message: { role: 'user', content: '[Workflow harness — computed task] preamble\n  [gm-call:cluster:r3]\n  body' } },
+    ].map(r => JSON.stringify(r)).join('\n') + '\n');
     writeFileSync(path.join(d, 'journal.jsonl'), [
       { type: 'started', agentId: 'a1' }, { type: 'result', agentId: 'a1', result: { v: 'old' } },
       { type: 'started', agentId: 'a3' }, { type: 'result', agentId: 'a3', result: { v: 'sim' } },
       { type: 'started', agentId: 'a5' },
       { type: 'started', agentId: 'a2' }, { type: 'started', agentId: 'a4' },
       { type: 'result', agentId: 'a2', result: { v: 'new' } },
+      { type: 'started', agentId: 'a6' }, { type: 'result', agentId: 'a6', result: { v: 'clusters' } },
     ].map(r => JSON.stringify(r)).join('\n') + '\n');
     const { calls, duplicates } = readCalls(d);
     assert.deepEqual(calls.get('judge:x:L0:j0s'), { v: 'new' });
     assert.deepEqual(calls.get('sim:y'), { v: 'sim' });
     assert.equal(calls.get('verify:z'), null);
+    assert.deepEqual(calls.get('cluster:r3'), { v: 'clusters' }, 'tag found in the second user record');
     assert.equal(duplicates, 2);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
