@@ -38,5 +38,11 @@ jobs:
           for f in findings.jsonl plan.json open_world_plan.json sequence_findings.jsonl summary.md; do
             cmp "workspace/det-a/$f" "workspace/det-b/$f"
           done
+      - name: quick (the default path) produces a brief and a viewer
+        run: |
+          set -euo pipefail
+          node bin/gm2.mjs quick --target fixtures/example-agent/agent.mjs --out workspace/ci-quick
+          test -s workspace/ci-quick/quick.md
+          test -s workspace/ci-quick/viewer.html
       - name: Boundary engine on the mock runner
         run: node bin/gm2.mjs boundary --target fixtures/example-agent/agent.mjs --out workspace/boundary --quiet

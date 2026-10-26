@@ -20,7 +20,7 @@ node bin/gm2.mjs quick --target /path/to/your/agent
 node bin/gm2.mjs render --in workspace/quick-<agent> [--boundary <boundary folder>] [--out viewer.html]
 ```
 
-`render` writes one self-contained HTML file (three.js from cdnjs, all data inlined; opens from disk). Five views: a **risk field** that colour-maps the request space — green where it is secure and efficient, red where it bulges into insecure, blue into inefficient, magenta both, height for the size of the bulge, with the worst hidden-axis combination on hover; **defense surfaces** per sensitive tool (a code gate is a flat floor, a prompt-only defense a cliff) once a boundary folder exists; the **wiring** graph with ungated routes and unsanitized taint flows lit; the **state space** with every multi-step witness path lit; and the **request cloud** of lattice cells with the plan's picks ringed.
+`quick` renders this for you (`viewer.html` next to the brief; add `--open` to launch it, `--no-render` to skip). To build it yourself or add measured data, `render` writes one self-contained HTML file (three.js from cdnjs, all data inlined; opens from disk). Five views: a **risk field** that colour-maps the request space — green where it is secure and efficient, red where it bulges into insecure, blue into inefficient, magenta both, height for the size of the bulge, with the worst hidden-axis combination on hover; **defense surfaces** per sensitive tool (a code gate is a flat floor, a prompt-only defense a cliff) once a boundary folder exists; the **wiring** graph with ungated routes and unsanitized taint flows lit; the **state space** with every multi-step witness path lit; and the **request cloud** of lattice cells with the plan's picks ringed.
 
 Everything else, when you want control:
 
